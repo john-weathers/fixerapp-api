@@ -1,11 +1,12 @@
-const User = require('../model/User'); // TODO: update...not using Mongoose for this build
+const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
-const handleRefreshToken = async (req, res) => {
+// handle refresh token from user
+const handleUserRT = async (req, res) => {
     const cookies = req.cookies;
-    if (!cookies?.jwt) return res.sendStatus(401);
-    const refreshToken = cookies.jwt;
-    res.clearCookie('jwt', { httpOnly: true, sameSite: 'None', secure: true });
+    if (!cookies?.jwtUser) return res.sendStatus(401);
+    const refreshToken = cookies.jwtUser;
+    res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true });
 
     const foundUser = await User.findOne({ refreshToken }).exec();
 
@@ -15,15 +16,15 @@ const handleRefreshToken = async (req, res) => {
             refreshToken,
             process.env.REFRESH_TOKEN_SECRET,
             async (err, decoded) => {
-                if (err) return res.sendStatus(403); //Forbidden
+                if (err) return res.sendStatus(403); // Forbidden
                 console.log('attempted refresh token reuse!')
-                const hackedUser = await User.findOne({ username: decoded.username }).exec();
+                const hackedUser = await User.findOne({ email: decoded.email }).exec();
                 hackedUser.refreshToken = [];
                 const result = await hackedUser.save();
                 console.log(result);
             }
         )
-        return res.sendStatus(403); //Forbidden
+        return res.sendStatus(403); // Forbidden
     }
 
     const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
@@ -39,36 +40,39 @@ const handleRefreshToken = async (req, res) => {
                 const result = await foundUser.save();
                 console.log(result);
             }
-            if (err || foundUser.username !== decoded.username) return res.sendStatus(403);
+            if (err || foundUser.email !== decoded.email) return res.sendStatus(403);
 
             // Refresh token was still valid
-            const roles = Object.values(foundUser.roles);
             const accessToken = jwt.sign(
-                {
-                    "UserInfo": {
-                        "username": decoded.username,
-                        "roles": roles
-                    }
-                },
+                { "email": foundUser.email },
                 process.env.ACCESS_TOKEN_SECRET,
-                { expiresIn: '10s' }
+                { expiresIn: '15m' }
             );
 
             const newRefreshToken = jwt.sign(
-                { "username": foundUser.username },
+                { "email": foundUser.email },
                 process.env.REFRESH_TOKEN_SECRET,
                 { expiresIn: '1d' }
             );
             // Saving refreshToken with current user
             foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
             const result = await foundUser.save();
+            console.log(result);
 
             // Creates Secure Cookie with refresh token
-            res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
+            res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
 
-            res.json({ roles, accessToken })
+            res.json({ accessToken })
         }
     );
 }
 
-module.exports = { handleRefreshToken }
+const findFixer = async (req, res, next) => {
+// controller for user initiated search to find handyman
+// plan on utilize $geoNear or similar (combined with lookingForWork check and potentially other filters) to find available handyman within appropriate distance
+}
+
+module.exports = {
+    handleUserRT,
+    findFixer,
+}

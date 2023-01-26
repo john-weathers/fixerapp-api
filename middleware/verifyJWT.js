@@ -11,7 +11,7 @@ const verifyJWT = (req, res, next) => {
         process.env.ACCESS_TOKEN_SECRET, // create secret key
         (err, decoded) => {
             if (err) return res.sendStatus(403); //invalid token
-            req.user = decoded.username; // TODO: update
+            req.email = decoded.email;
             next();
         }
     );

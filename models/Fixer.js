@@ -61,3 +61,5 @@ const fixerSchema = new Schema({
     },
     refreshToken: [String],
 });
+
+module.exports = mongoose.model('Fixer', fixerSchema);
