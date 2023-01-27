@@ -20,6 +20,13 @@ const userSchema = new Schema({
         required: true,
         match: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%]).{8,24}$/,
     },
+    roles: {
+        user: {
+            type: Number,
+            default: 2505,
+        },
+        premiumUser: Number,
+    },
     firstName: {
         type: String,
         required: true,

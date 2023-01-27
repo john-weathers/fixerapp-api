@@ -20,6 +20,13 @@ const fixerSchema = new Schema({
         required: true,
         match: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%]).{8,24}$/,
     },
+    roles: {
+        fixer: {
+            type: Number,
+            default: 3450,
+        },
+        premiumFixer: Number,
+    },
     firstName: {
         type: String,
         required: true,
