@@ -27,15 +27,17 @@ const userSchema = new Schema({
         },
         premiumUser: Number,
     },
-    firstName: {
-        type: String,
-        required: true,
-        match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
-    },
-    lastName: {
-        type: String,
-        required: true,
-        match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
+    name: {
+        first: {
+            type: String,
+            required: true,
+            match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
+        },
+        last: {
+            type: String,
+            required: true,
+            match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
+        },
     },
     phoneNumber: {
         type: String,
@@ -60,6 +62,13 @@ const userSchema = new Schema({
         get: getRating,
     },
     refreshToken: [String],
+    currentMatch: {
+        email: String,
+        name: {
+            first: String,
+            last: String,
+        },
+    },
 });
 
 module.exports = mongoose.model('User', userSchema);

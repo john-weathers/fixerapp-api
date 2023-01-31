@@ -2,6 +2,9 @@ const Fixer = require('../models/Fixer');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+// revisit sameSite cookie settings
+// revisit sending roles in login and refresh handlers
+
 const handleRegistration = async (req, res) => {
     const { email, pwd } = req.body;
     if (!email || !pwd) return res.status(400).json({ 'message': 'Email and password are required for registration.' });
@@ -144,7 +147,7 @@ const handleRefreshToken = async (req, res) => {
             const accessToken = jwt.sign(
                 {
                     'userInfo': {
-                        'email': foundUser.email,
+                        'email': decoded.email,
                         roles,
                     },
                 },

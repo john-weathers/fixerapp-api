@@ -2,7 +2,8 @@ const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-// UPDATE ACCESS/REFRESH TOKEN VARIABLES
+// revisit sameSite cookie settings
+// revisit sending roles in login and refresh handlers
 
 const handleRegistration = async (req, res) => {
     const { email, pwd } = req.body;
@@ -146,7 +147,7 @@ const handleRefreshToken = async (req, res) => {
             const accessToken = jwt.sign(
                 {
                     'userInfo': {
-                        'email': foundUser.email,
+                        'email': decoded.email,
                         roles,
                     },
                 },
