@@ -29,7 +29,7 @@ app.use(express.json());
 
 app.use(cookieParser());
 
-// public routes
+// public routes proposed: /userAuth, /fixerAuth
 
 
 // private routes
