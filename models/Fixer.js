@@ -12,13 +12,12 @@ function getRating() {
 const fixerSchema = new Schema({
     email: {
         type: String,
-        require: true,
+        required: true,
         match: /^.{1,64}@.{1,255}$/,
     },
     password: {
         type: String,
         required: true,
-        match: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%]).{8,24}$/,
     },
     roles: {
         fixer: {

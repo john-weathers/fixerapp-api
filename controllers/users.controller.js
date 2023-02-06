@@ -1,31 +1,45 @@
-const Fixer = require('../models/Fixer');
+const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
 
+// public controllers
 const handleRegistration = async (req, res) => {
-    const { email, pwd } = req.body;
-    if (!email || !pwd) return res.status(400).json({ 'message': 'Email and password are required for registration.' });
+    const {
+        email,
+        pwd,
+        firstName,
+        lastName,
+        phoneNumber
+    } = req.body;
+    const PWD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%]).{8,24}$/;
+    if (!PWD_REGEX.test(pwd)) return res.status(400).json({'message': 'Password invalid'});
+    if (!email || !pwd || !firstName || !lastName || !phoneNumber) return res.status(400).json({ 'message': 'Required for registration: email, password, first and last name, phone number' });
 
     // check for duplicate usernames in the db
-    const duplicateUser = await Fixer.findOne({ email }).exec();
+    const duplicateUser = await User.findOne({ email }).exec();
     if (duplicateUser) return res.sendStatus(409); //Conflict 
 
     try {
         //encrypt the password
         const hashedPassword = await bcrypt.hash(pwd, 10);
-
-        //create and store the new Fixer
-        const result = await Fixer.create({
+        
+        //create and store the new user
+        const result = await User.create({
             email,
             password: hashedPassword,
+            name: {
+                first: firstName,
+                last: lastName,
+            },
+            phoneNumber,
         });
 
         console.log(result);
 
-        res.status(201).json({ 'success': `New fixer at ${email} created!` });
+        res.status(201).json({ 'success': `New user at ${email} created!` });
     } catch (err) {
         res.status(500).json({ 'message': err.message });
     }
@@ -37,7 +51,7 @@ const handleLogin = async (req, res) => {
     const { email, pwd } = req.body;
     if (!email || !pwd) return res.status(400).json({ 'message': 'Email and password are required for login.' });
 
-    const foundUser = await Fixer.findOne({ email }).exec();
+    const foundUser = await User.findOne({ email }).exec();
     if (!foundUser) return res.sendStatus(401); // Unauthorized 
     // evaluate password 
     const match = await bcrypt.compare(pwd, foundUser.password);
@@ -51,30 +65,30 @@ const handleLogin = async (req, res) => {
                     roles,
                 },
             },
-            process.env.FIXER_ACCESS_TOKEN_SECRET,
-            { expiresIn: '15m' }
+            process.env.USER_ACCESS_TOKEN_SECRET,
+            { expiresIn: '15s' }
         );
         const newRefreshToken = jwt.sign(
             { 'email': foundUser.email },
-            process.env.FIXER_REFRESH_TOKEN_SECRET,
-            { expiresIn: '1d' }
+            process.env.USER_REFRESH_TOKEN_SECRET,
+            { expiresIn: '30s' }
         );
         
         let newRefreshTokenArray =
-            !cookies?.jwtFixer
+            !cookies?.jwtUser
                 ? foundUser.refreshToken
-                : foundUser.refreshToken.filter(rt => rt !== cookies.jwtFixer);
+                : foundUser.refreshToken.filter(rt => rt !== cookies.jwtUser);
 
-        if (cookies?.jwtFixer) {
+        if (cookies?.jwtUser) {
 
             /* 
             Scenario added here: 
-                1) Fixer logs in but never uses RT and does not logout 
+                1) User logs in but never uses RT and does not logout 
                 2) RT is stolen
-                3) If 1 & 2, reuse detection is needed to clear all RTs when Fixer logs in
+                3) If 1 & 2, reuse detection is needed to clear all RTs when user logs in
             */
-            const refreshToken = cookies.jwtFixer;
-            const foundToken = await Fixer.findOne({ refreshToken }).exec();
+            const refreshToken = cookies.jwtUser;
+            const foundToken = await User.findOne({ refreshToken }).exec();
 
             // Detected refresh token reuse!
             if (!foundToken) {
@@ -83,18 +97,18 @@ const handleLogin = async (req, res) => {
                 newRefreshTokenArray = [];
             }
 
-            res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true }); // TODO: revisit options
+            res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true }); // TODO: revisit options
         }
 
-        // Saving refreshToken with current Fixer
+        // Saving refreshToken with current user
         foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
         const result = await foundUser.save();
         console.log(result);
 
         // Creates Secure Cookie with refresh token
-        res.cookie('jwtFixer', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
+        res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
 
-        // Send authorization roles and access token to Fixer
+        // Send authorization roles and access token to user
         res.json({ accessToken });
 
     } else {
@@ -104,21 +118,21 @@ const handleLogin = async (req, res) => {
 
 const handleRefreshToken = async (req, res) => {
     const cookies = req.cookies;
-    if (!cookies?.jwtFixer) return res.sendStatus(401);
-    const refreshToken = cookies.jwtFixer;
-    res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true });
+    if (!cookies?.jwtUser) return res.sendStatus(401);
+    const refreshToken = cookies.jwtUser;
+    res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true });
 
-    const foundUser = await Fixer.findOne({ refreshToken }).exec();
+    const foundUser = await User.findOne({ refreshToken }).exec();
 
     // Detected refresh token reuse!
     if (!foundUser) {
         jwt.verify(
             refreshToken,
-            process.env.FIXER_REFRESH_TOKEN_SECRET,
+            process.env.USER_REFRESH_TOKEN_SECRET,
             async (err, decoded) => {
                 if (err) return res.sendStatus(403); // Forbidden
                 console.log('attempted refresh token reuse!')
-                const hackedUser = await Fixer.findOne({ email: decoded.email }).exec();
+                const hackedUser = await User.findOne({ email: decoded.email }).exec();
                 hackedUser.refreshToken = [];
                 const result = await hackedUser.save();
                 console.log(result);
@@ -132,7 +146,7 @@ const handleRefreshToken = async (req, res) => {
     // evaluate jwt 
     jwt.verify(
         refreshToken,
-        process.env.FIXER_REFRESH_TOKEN_SECRET,
+        process.env.USER_REFRESH_TOKEN_SECRET,
         async (err, decoded) => {
             if (err) {
                 console.log('expired refresh token')
@@ -151,22 +165,22 @@ const handleRefreshToken = async (req, res) => {
                         roles,
                     },
                 },
-                process.env.FIXER_ACCESS_TOKEN_SECRET,
-                { expiresIn: '15m' }
+                process.env.USER_ACCESS_TOKEN_SECRET,
+                { expiresIn: '15s' }
             );
 
             const newRefreshToken = jwt.sign(
                 { "email": foundUser.email },
-                process.env.FIXER_REFRESH_TOKEN_SECRET,
-                { expiresIn: '1d' }
+                process.env.USER_REFRESH_TOKEN_SECRET,
+                { expiresIn: '30s' }
             );
-            // Saving refreshToken with current Fixer
+            // Saving refreshToken with current user
             foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
             const result = await foundUser.save();
             console.log(result);
 
             // Creates Secure Cookie with refresh token
-            res.cookie('jwtFixer', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
+            res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
 
             res.json({ accessToken })
         }
@@ -175,15 +189,15 @@ const handleRefreshToken = async (req, res) => {
 
 const handleLogout = async (req, res) => {
     // On client, also delete the accessToken
-    
+
     const cookies = req.cookies;
-    if (!cookies?.jwtFixer) return res.sendStatus(204); // No content
-    const refreshToken = cookies.jwtFixer;
+    if (!cookies?.jwtUser) return res.sendStatus(204); // No content
+    const refreshToken = cookies.jwtUser;
 
     // refresh token in db?
-    const foundUser = await Fixer.findOne({ refreshToken }).exec();
+    const foundUser = await User.findOne({ refreshToken }).exec();
     if (!foundUser) {
-        res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true }); // revisit clearCookie options
+        res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true }); // revisit clearCookie options
         return res.sendStatus(204);
     }
 
@@ -192,13 +206,25 @@ const handleLogout = async (req, res) => {
     const result = await foundUser.save();
     console.log(result);
 
-    res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true });
+    res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true });
     res.sendStatus(204);
 }
 
+// private controllers
+const findFixer = async (req, res, next) => {
+// controller for user initiated search to find handyman
+// plan on utilize $geoNear or similar (combined with lookingForWork check and potentially other filters) to find available handyman within appropriate distance
+}
+
+const handleGetProfile = async (req, res, next) => {
+    
+}
+
 module.exports = {
-    handleLogin,
     handleRegistration,
+    handleLogin,
     handleRefreshToken,
-    handleLogout, 
+    handleLogout,
+    handleGetProfile,
+    findFixer,
 }

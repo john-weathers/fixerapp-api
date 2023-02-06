@@ -29,12 +29,14 @@ app.use(express.json());
 
 app.use(cookieParser());
 
-// public routes proposed: /userAuth, /fixerAuth
+// public routes
+const publicUserRouter = require('./routes/usersPublic');
+const publicFixerRouter = require('./routes/fixersPublic');
 
+app.use('/user', publicUserRouter);
+app.use('/fixer', publicFixerRouter);
 
 // private routes
-app.use(verifyJWT);
-
 
 app.all('*', (req, res, next) => {
     res.sendStatus(404);
