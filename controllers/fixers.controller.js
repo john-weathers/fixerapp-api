@@ -210,7 +210,19 @@ const handleLogout = async (req, res) => {
 }
 
 const handleGetProfile = async (req, res, next) => {
-    
+    const profile = await Fixer.findOne({ email: req.email }).exec();
+    if (!profile) res.redirect('/fixer/logout');
+
+    const profileData = {
+        email: profile.email,
+        firstName: profile.name.first,
+        lastName: profile.name.last,
+        phoneNumber: profile.phoneNumber,
+        rating: profile.rating,
+        premium: !!profile.roles.premiumFixer,
+    }
+
+    res.send(profileData);
 }
 
 module.exports = {

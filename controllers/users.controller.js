@@ -217,7 +217,19 @@ const findFixer = async (req, res, next) => {
 }
 
 const handleGetProfile = async (req, res, next) => {
-    
+    const profile = await User.findOne({ email: req.email }).exec();
+    if (!profile) res.redirect('/user/logout');
+
+    const profileData = {
+        email: profile.email,
+        firstName: profile.name.first,
+        lastName: profile.name.last,
+        phoneNumber: profile.phoneNumber,
+        rating: profile.rating,
+        premium: !!profile.roles.premiumUser,
+    }
+
+    res.send(profileData);
 }
 
 module.exports = {

@@ -37,6 +37,11 @@ app.use('/user', publicUserRouter);
 app.use('/fixer', publicFixerRouter);
 
 // private routes
+const privateUserRouter = require('./routes/usersPrivate');
+const privateFixerRouter = require('./routes/fixersPrivate');
+
+app.use('/users', privateUserRouter);
+app.use('/fixers', privateFixerRouter);
 
 app.all('*', (req, res, next) => {
     res.sendStatus(404);
