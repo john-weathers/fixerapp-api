@@ -1,16 +1,7 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
-const nameSchema = new Schema({
-    first: {
-        type: String,
-        match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
-    },
-    last: {
-        type: String,
-        match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
-    },
-});
+// needs to be completed...need to decide if population is necessary for proposals and bids or if the refs just need to be on the proposals and if there should be a separate bid schema
 
 function getRating() {
     if (this.ratings.length) {
@@ -38,8 +29,16 @@ const fixerSchema = new Schema({
         premiumFixer: Number,
     },
     name: {
-        type: nameSchema,
-        required: true,
+        first: {
+            type: String,
+            required: true,
+            match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
+        },
+        last: {
+            type: String,
+            required: true,
+            match: /^[A-Za-zÀ-ÖØ-öø-ÿ]{1,30}$/,
+        },
     },
     phoneNumber: {
         type: String,
@@ -54,21 +53,14 @@ const fixerSchema = new Schema({
         },
         coordinates: [Number],
     },
-    currentLocation: {
-        type: {
-            type: String,
-            enum: ['Point'],
-        },
-        coordinates: [Number],
-    },
     ratings: [Number],
     rating: {
         type: Number,
         get: getRating,
     },
     refreshToken: [String],
-    activeJob: { type: Schema.Types.ObjectId, ref: 'Request' },
-    // bids: [{ type: Schema.Types.ObjectId, ref: 'Bid' }], think about schedule data as well...might make most sense to use bid
+    activeJob: [], // look into mongoose populate function and other info on references...may be best way
+    bids: [], // think about if array makes sense...think about schedule data...could somehow have separate field, may make sense to attach it here, etc.
 
 });
 
