@@ -5,7 +5,7 @@ const {
   handleLogin,
   handleRefreshToken,
   handleLogout,
-} = require('../controllers/fixers.controller');
+} = require('../../controllers/fixers.controller');
 
 router.post('/register', handleRegistration);
 router.post('/auth', handleLogin);

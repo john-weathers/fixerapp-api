@@ -5,7 +5,7 @@ const {
   handleLogin,
   handleRefreshToken,
   handleLogout,
-} = require('../controllers/users.controller');
+} = require('../../controllers/users.controller');
 
 router.post('/register', handleRegistration);
 router.post('/auth', handleLogin);

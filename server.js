@@ -30,15 +30,15 @@ app.use(express.json());
 app.use(cookieParser());
 
 // public routes
-const publicUserRouter = require('./routes/usersPublic');
-const publicFixerRouter = require('./routes/fixersPublic');
+const publicUserRouter = require('./routes/users/public');
+const publicFixerRouter = require('./routes/fixers/public');
 
 app.use('/user', publicUserRouter);
 app.use('/fixer', publicFixerRouter);
 
 // private routes
-const privateUserRouter = require('./routes/usersPrivate');
-const privateFixerRouter = require('./routes/fixersPrivate');
+const privateUserRouter = require('./routes/users/private');
+const privateFixerRouter = require('./routes/fixers/private');
 
 app.use('/users', privateUserRouter);
 app.use('/fixers', privateFixerRouter);

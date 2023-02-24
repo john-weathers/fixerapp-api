@@ -1,6 +1,9 @@
 const User = require('../models/User');
+const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+const assert = require('assert');
 
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
@@ -211,25 +214,86 @@ const handleLogout = async (req, res) => {
 }
 
 // private controllers
-const findFixer = async (req, res, next) => {
-// controller for user initiated search to find handyman
-// plan on utilize $geoNear or similar (combined with lookingForWork check and potentially other filters) to find available handyman within appropriate distance
+const handleGetProfile = async (req, res, next) => {
+    try {
+        const profile = await User.findOne({ email: req.email }).exec();
+        if (!profile) return res.redirect('/user/logout');
+
+        const profileData = {
+            email: profile.email,
+            firstName: profile.name.first,
+            lastName: profile.name.last,
+            phoneNumber: profile.phoneNumber,
+            rating: profile.rating,
+            premium: !!profile.roles.premiumUser,
+        }
+        res.send(profileData);
+    } catch (err) {
+        res.status(500).json({ 'message': err.message });
+    }
 }
 
-const handleGetProfile = async (req, res, next) => {
-    const profile = await User.findOne({ email: req.email }).exec();
-    if (!profile) res.redirect('/user/logout');
+const fixRequest = async (req, res, next) => {
+    // const session = mongoose.startSession();
+    try {
+        // session.startTransaction();
+        const { location } = req.body;
+        if (!location.length) return res.sendStatus(400); // throw new Error('400');
 
-    const profileData = {
-        email: profile.email,
-        firstName: profile.name.first,
-        lastName: profile.name.last,
-        phoneNumber: profile.phoneNumber,
-        rating: profile.rating,
-        premium: !!profile.roles.premiumUser,
+        const profile = await User.findOne({ email: req.email }).exec(); // .session(session);
+        // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here
+        if (!profile) return res.redirect('/user/logout'); // throw new Error('no profile');
+
+        // assert.ok(profile.$session());
+        // logic elsewhere should prevent user creating additional requests if they already have a request in progress
+        // revisit if this needs to be beefed up to deal with those type of edge cases
+        await Request.findOneAndUpdate(
+            { userEmail: req.email, active: true },
+            { userEmail: req.email, userDetails: profile._id, location: { type: 'Point', coordinates: location }, active: true, requestedAt: new Date() },
+            { upsert: true, new: true, /*session: session*/  }
+        );
+
+        res.status(201).send('request successfully created!');
+        // TODO: I think best course will be sending response that acts as a confirmation and setting the interval on the f/e (interval get request to check status of request)
+
+        // theoretically can use scheduled triggers to keep the requests collection lean (e.g., active requests that are older than x time should be changed to 'failed'
+        // and/or can move any requests past a certain age to a separate archive collection, etc.)
+        // this may reduce or eliminate the need for certain refs/population
+        // transaction logic should not be needed here but should be ideal for the actual matching process 
+
+        /*assert.ok(result.$session());
+        console.log(result);
+        if (!profile.requests.includes(result._id)) {
+            profile.requests.push(result._id);
+            await profile.save();
+        }
+        await session.commitTransaction();*/
+
+        // redirect to get request?
+
+    } catch (err) {
+        /*if (err.message === '400') {
+            await session.abortTransaction();
+            session.endSession();
+            return res.sendStatus(400);
+        } else if (err.message === 'no profile') {
+            await session.abortTransaction();
+            session.endSession();
+            return res.redirect('/user/logout');
+        }
+        await session.abortTransaction();*/
+        res.status(500).json({ 'message': err.message });
     }
+    // session.endSession();
+}
 
-    res.send(profileData);
+const searchRequest = async (req, res, next) => {
+    // this function should ideally work for both a useQuery (or similar) at the beginning of a load into the quickfix interface and for a search immediately after request submission
+    
+}
+
+const cancelRequest = async (req, res, next) => {
+
 }
 
 module.exports = {
@@ -238,5 +302,7 @@ module.exports = {
     handleRefreshToken,
     handleLogout,
     handleGetProfile,
-    findFixer,
+    fixRequest,
+    searchRequest,
+    cancelRequest,
 }

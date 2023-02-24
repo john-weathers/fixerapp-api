@@ -211,7 +211,7 @@ const handleLogout = async (req, res) => {
 
 const handleGetProfile = async (req, res, next) => {
     const profile = await Fixer.findOne({ email: req.email }).exec();
-    if (!profile) res.redirect('/fixer/logout');
+    if (!profile) return res.redirect('/fixer/logout');
 
     const profileData = {
         email: profile.email,

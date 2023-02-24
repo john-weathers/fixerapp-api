@@ -60,7 +60,7 @@ const userSchema = new Schema({
         get: getRating,
     },
     refreshToken: [String],
-    requests: [{ type: Schema.Types.ObjectId, ref: 'Request' }],
+    // requests: [{ type: Schema.Types.ObjectId, ref: 'Request' }],
     // proposals: [{ type: Schema.Types.ObjectId, ref: 'Proposal' }],
 });
 
