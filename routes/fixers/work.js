@@ -2,12 +2,12 @@ const express = require('express');
 const {
   currentWork, 
   findWork,
-  cancelWork,
+  cancelJob,
 } = require('../../controllers/fixers.controller');
 const router = express.Router();
 
 router.get('/current', currentWork);
 router.post('/find', findWork);
-router.post('/cancel', cancelWork);
+router.post('/cancel', cancelJob);
 
 module.exports = router;

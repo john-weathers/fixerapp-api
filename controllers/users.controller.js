@@ -3,7 +3,6 @@ const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const assert = require('assert');
 
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
@@ -229,74 +228,75 @@ const handleGetProfile = async (req, res, next) => {
         }
         res.send(profileData);
     } catch (err) {
-        res.status(500).json({ 'message': err.message });
+        res.status(500).send(err.message);
     }
 }
 
 const fixRequest = async (req, res, next) => {
-    // const session = mongoose.startSession();
-    try {
-        // session.startTransaction();
-        const { location } = req.body;
-        if (!location.length) return res.sendStatus(400); // throw new Error('400');
+    const { location } = req.body;
+    if (!location.length) return res.sendStatus(400);
 
-        const profile = await User.findOne({ email: req.email }).exec(); // .session(session);
+    try {
+        const profile = await User.findOne({ email: req.email }).exec();
         // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here
-        if (!profile) return res.redirect('/user/logout'); // throw new Error('no profile');
+        if (!profile) return res.redirect('/user/logout'); 
         if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
 
-        // assert.ok(profile.$session());
         // logic elsewhere should prevent user creating additional requests if they already have a request in progress
         // revisit if this needs to be beefed up to deal with those type of edge cases
-        // updateOne with upsert may be more efficient since we don't need the return document values?
-        await Request.updateOne(
+        const response = await Request.updateOne(
             { user: profile._id, active: true },
             { user: profile._id, location: { type: 'Point', coordinates: location }, active: true, requestedAt: new Date() },
             { upsert: true, /*session: session*/  }
         );
 
-        // if edge cases for failure exist with a bad update (that doesn't throw an error), could create some conditional logic with the updateOne response object
+        if (!response.modifiedCount && !response.upsertedCount) return res.sendStatus(500);
         res.status(201).send('request successfully created!');
-        // TODO: I think best course will be sending response that acts as a confirmation and setting the interval on the f/e (interval get request to check status of request)
 
         // theoretically can use scheduled triggers to keep the requests collection lean (e.g., active requests that are older than x time should be changed to 'failed'
         // and/or can move any requests past a certain age to a separate archive collection, etc.)
         // this may reduce or eliminate the need for certain refs/population
-        // transaction logic should not be needed here but should be ideal for the actual matching process 
 
-        /*assert.ok(result.$session());
-        console.log(result);
-        if (!profile.requests.includes(result._id)) {
-            profile.requests.push(result._id);
-            await profile.save();
-        }
-        await session.commitTransaction();*/
-
-        // redirect to get request?
 
     } catch (err) {
-        /*if (err.message === '400') {
-            await session.abortTransaction();
-            session.endSession();
-            return res.sendStatus(400);
-        } else if (err.message === 'no profile') {
-            await session.abortTransaction();
-            session.endSession();
-            return res.redirect('/user/logout');
-        }
-        await session.abortTransaction();*/
-        res.status(500).json({ 'message': err.message });
+        res.status(500).send(err.message);
     }
-    // session.endSession();
 }
 
-const searchRequest = async (req, res, next) => {
-    // this function should ideally work for both a useQuery (or similar) at the beginning of a load into the quickfix interface and for a search immediately after request submission
+const currentRequest = async (req, res, next) => {
+    // consider adding userEmail as a separate property for Request model if we need/want to reduce number of database requests
+    // tradeoff is adding some redundancy to each Request document
+    try {
+        const profile = await User.findOne({ email: req.email }).exec();
+        // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here
+        if (!profile) return res.redirect('/user/logout'); 
+        if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
+
+        const activeJob = await Request.findOne({ user: profile._id, currentStatus: 'in progress' })
+            .populate('fixer', 'name phoneNumber rating currentLocation') // in production it may be best to wait to send currentLocation for privacy reasons
+            .exec();
+        if (!activeJob) return res.sendStatus(404);
+        // what to send back? location (user), trackerStage, firstName, phoneNumber, currentLocation (fixer)
+        const jobDetails = {
+
+        }
+        res.status(201).send(jobDetails);
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
 
 }
 
 const cancelRequest = async (req, res, next) => {
+    const profile = await User.findOne({ email: req.email }).exec();
+    // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here
+    if (!profile) return res.redirect('/user/logout'); 
+    if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
 
+    const response = await Request.deleteOne({ user: profile._id, active: true });
+
+    if (!response.deletedCount) return res.sendStatus(500);
+    res.status(204).send('request successfully deleted')
 }
 
 module.exports = {
@@ -306,6 +306,6 @@ module.exports = {
     handleLogout,
     handleGetProfile,
     fixRequest,
-    searchRequest,
+    currentRequest,
     cancelRequest,
 }

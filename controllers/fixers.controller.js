@@ -234,6 +234,7 @@ const currentWork = async (req, res, next) => {
 const findWork = async (req, res, next) => {
     const { location } = req.body;
     if (!location.length) return res.sendStatus(400);
+    const geojsonPoint = { type: 'Point', coordinates: location } 
     // get profile of fixer or attempt to do so during aggregation?
     const profile = await Fixer.findOne({ email: req.email }).exec();
     if (!profile) return res.redirect('/fixer/logout');
@@ -243,7 +244,7 @@ const findWork = async (req, res, next) => {
         const activeRequests = Request.aggregate([
             {
                 $geoNear: {
-                    near: { type: 'Point', coordinates: location },
+                    near: geojsonPoint,
                     distanceField: 'distance',
                     maxDistance: 32187, // about 20 miles (default unit meters)
                     query: { 
@@ -253,21 +254,30 @@ const findWork = async (req, res, next) => {
                 }
             },
             { $sort: { requestedAt: 1 } }, // older (non-stale) requests should be satisfied first
-            { $limit: 10 },
+            { $limit: 10 }, // only one request will be matched, so we can limit to a pool of eligible candidates (adjust number if needed).
         ]);
         // loop through multiple candidates in the event that a request was matched after aggregation and before updateOne (thinking about a scenario with many requests in a busy area)
+        // consider making this a transaction to ensure data is consistent between multiple related operations
         for await (const activeRequest of activeRequests) {
             try {
                 // if it turns out values from the updated document are needed, we can use findOneAndUpdate instead (new: true)
-                const response = await Request.updateOne(
+                const response = await Request.findOneAndUpdate(
                     { _id: activeRequest._id, active: true },
-                    { active: false, currentStatus: 'in progress', assignedAt: new Date(), fixer: profile._id },
-                    { runValidators: true, context: 'query', previous: activeRequest.active } // make sure we're not dealing with a stale active value
-                );
-                if (response.modifiedCount < 1) {
+                    { active: false, currentStatus: 'in progress', trackerStage: 'en route', assignedAt: new Date(), fixer: profile._id },
+                    { runValidators: true, new: true, context: 'query', previous: activeRequest.active } // make sure we're not dealing with a stale active value
+                )
+                    .populate('user', 'name phoneNumber')
+                    .exec();
+                if (!response) {
                     continue;
                 } else {
-                    return res.status(201).send('match found!')
+                    profile.activeJob = activeRequest._id;
+                    profile.currentLocation = geojsonPoint;
+                    await profile.save();
+                    const jobDetails = {
+
+                    }
+                    return res.status(201).send(jobDetails)
                 }
             } catch (err) {
                 continue; // if validation fails (or other error), move to next closest candidate
@@ -280,7 +290,9 @@ const findWork = async (req, res, next) => {
 
 }
 
-const cancelWork = async (req, res, next) => {
+// cancel an in progress job
+// api request likely should originate from FixerConfirmation component
+const cancelJob = async (req, res, next) => {
 
 }
 
@@ -292,5 +304,5 @@ module.exports = {
     handleGetProfile,
     currentWork,
     findWork,
-    cancelWork, 
+    cancelJob, 
 }

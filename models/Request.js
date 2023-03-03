@@ -38,6 +38,10 @@ const requestSchema = new Schema({
         message: () => `Request status must be different from previous value`
       },*/
     },
+    trackerStage: {
+      type: String,
+      enum: ['en route', 'arriving', 'fixing', 'complete' ],
+    }, 
     requestedAt: {
       type: Date,
       required: true,
