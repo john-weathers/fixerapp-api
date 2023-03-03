@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const Fixer = require('../models/Fixer');
+const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
@@ -15,7 +17,7 @@ const handleRegistration = async (req, res) => {
     } = req.body;
     const PWD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%]).{8,24}$/;
     if (!PWD_REGEX.test(pwd)) return res.status(400).json({ 'message': 'Password invalid' });
-    if (!email || !pwd || !firstName || !lastName || !phoneNumber) return res.status(400).json({ 'message': 'Required for registration: email, password, first and last name, phone number' });
+    if (!email || !pwd || !firstName || !lastName || !phoneNumber) return res.status(400).json({ 'message': 'Please submit all required fields' });
 
     // check for duplicate usernames in the db
     const duplicateUser = await Fixer.findOne({ email }).exec();
@@ -225,9 +227,70 @@ const handleGetProfile = async (req, res, next) => {
     res.send(profileData);
 }
 
+const currentWork = async (req, res, next) => {
+    
+}
+
+const findWork = async (req, res, next) => {
+    const { location } = req.body;
+    if (!location.length) return res.sendStatus(400);
+    // get profile of fixer or attempt to do so during aggregation?
+    const profile = await Fixer.findOne({ email: req.email }).exec();
+    if (!profile) return res.redirect('/fixer/logout');
+    if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
+
+    try {
+        const activeRequests = Request.aggregate([
+            {
+                $geoNear: {
+                    near: { type: 'Point', coordinates: location },
+                    distanceField: 'distance',
+                    maxDistance: 32187, // about 20 miles (default unit meters)
+                    query: { 
+                        active: true, // filter for active requests only
+                        $expr: { $gt: [ '$requestedAt', { $dateSubtract: { startDate: '$$NOW', unit: 'minute', amount: 2 } } ] } // eliminate stale requests
+                    },
+                }
+            },
+            { $sort: { requestedAt: 1 } }, // older (non-stale) requests should be satisfied first
+            { $limit: 10 },
+        ]);
+        // loop through multiple candidates in the event that a request was matched after aggregation and before updateOne (thinking about a scenario with many requests in a busy area)
+        for await (const activeRequest of activeRequests) {
+            try {
+                // if it turns out values from the updated document are needed, we can use findOneAndUpdate instead (new: true)
+                const response = await Request.updateOne(
+                    { _id: activeRequest._id, active: true },
+                    { active: false, currentStatus: 'in progress', assignedAt: new Date(), fixer: profile._id },
+                    { runValidators: true, context: 'query', previous: activeRequest.active } // make sure we're not dealing with a stale active value
+                );
+                if (response.modifiedCount < 1) {
+                    continue;
+                } else {
+                    return res.status(201).send('match found!')
+                }
+            } catch (err) {
+                continue; // if validation fails (or other error), move to next closest candidate
+            }
+        }
+        res.sendStatus(500);
+    } catch (err) {
+        res.sendStatus(500);
+    }
+
+}
+
+const cancelWork = async (req, res, next) => {
+
+}
+
 module.exports = {
     handleLogin,
     handleRegistration,
     handleRefreshToken,
-    handleLogout, 
+    handleLogout,
+    handleGetProfile,
+    currentWork,
+    findWork,
+    cancelWork, 
 }

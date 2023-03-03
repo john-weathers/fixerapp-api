@@ -6,11 +6,7 @@ const Schema = mongoose.Schema;
 // note: populated documents can be transformed and there are autopopulate pre save hooks/a plugin if desired
 
 const requestSchema = new Schema({
-    userEmail: {
-      type: String,
-      required: true,
-    },
-    userDetails: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // can populate specific fields here...(email, name, phoneNumber...possibly relevant-roles, rating)
+    user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     // set up for $geoNear functionality
     location: {
         type: {
@@ -23,6 +19,13 @@ const requestSchema = new Schema({
     active: {
       type: Boolean,
       required: true,
+      validate: {
+        validator: function(v) {
+          if (this?.options?.previous === v) return false;
+          return true;
+        },
+        message: () => 'Active status already set to {VALUE}'
+      }
     },
     currentStatus: {
       type: String,
@@ -42,7 +45,7 @@ const requestSchema = new Schema({
     },
     assignedAt: Date,
     fulfilledAt: Date,
-    fixerDetails: { type: Schema.Types.ObjectId, ref: 'Fixer' }, // can populate specific fields here...(name, phoneNumber, currentLocation, rating?)
+    fixer: { type: Schema.Types.ObjectId, ref: 'Fixer' }, // can populate specific fields here...(name, phoneNumber, currentLocation, rating?)
 });
 
 module.exports = mongoose.model('Request', requestSchema);

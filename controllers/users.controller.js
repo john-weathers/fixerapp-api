@@ -243,16 +243,19 @@ const fixRequest = async (req, res, next) => {
         const profile = await User.findOne({ email: req.email }).exec(); // .session(session);
         // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here
         if (!profile) return res.redirect('/user/logout'); // throw new Error('no profile');
+        if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
 
         // assert.ok(profile.$session());
         // logic elsewhere should prevent user creating additional requests if they already have a request in progress
         // revisit if this needs to be beefed up to deal with those type of edge cases
-        await Request.findOneAndUpdate(
-            { userEmail: req.email, active: true },
-            { userEmail: req.email, userDetails: profile._id, location: { type: 'Point', coordinates: location }, active: true, requestedAt: new Date() },
-            { upsert: true, new: true, /*session: session*/  }
+        // updateOne with upsert may be more efficient since we don't need the return document values?
+        await Request.updateOne(
+            { user: profile._id, active: true },
+            { user: profile._id, location: { type: 'Point', coordinates: location }, active: true, requestedAt: new Date() },
+            { upsert: true, /*session: session*/  }
         );
 
+        // if edge cases for failure exist with a bad update (that doesn't throw an error), could create some conditional logic with the updateOne response object
         res.status(201).send('request successfully created!');
         // TODO: I think best course will be sending response that acts as a confirmation and setting the interval on the f/e (interval get request to check status of request)
 
@@ -289,7 +292,7 @@ const fixRequest = async (req, res, next) => {
 
 const searchRequest = async (req, res, next) => {
     // this function should ideally work for both a useQuery (or similar) at the beginning of a load into the quickfix interface and for a search immediately after request submission
-    
+
 }
 
 const cancelRequest = async (req, res, next) => {

@@ -10,4 +10,7 @@ const router = express.Router();
 router.all(verifyFixerJWT, verifyRoles(ROLES.fixer, ROLES.premiumFixer));
 router.get('/profile', handleGetProfile);
 
+const workRouter = require('./work');
+router.use('/work', workRouter);
+
 module.exports = router;
