@@ -20,6 +20,8 @@ function getRating() {
     }
 }
 
+// consider adding profile photos
+
 const userSchema = new Schema({
     email: {
         type: String,

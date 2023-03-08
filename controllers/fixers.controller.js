@@ -228,14 +228,34 @@ const handleGetProfile = async (req, res, next) => {
 }
 
 const currentWork = async (req, res, next) => {
-    
+    try {
+        const { activeJob } = await Fixer.findOne({ email: req.email })
+            .select('activeJob')
+            .populate({
+                path: 'activeJob',
+                select: 'user location currentStatus trackerStage',
+                populate: { path: 'user', select: 'name phoneNumber' },
+            })
+            .exec();
+        if (activeJob?.currentStatus !== 'in progress') return res.sendStatus(404);
+        const jobDetails = {
+            userLocation: activeJob.location.coordinates,
+            firstName: activeJob.user.name.first,
+            lastName: activeJob.user.name.last,
+            phoneNumber: activeJob.user.phoneNumber,
+            trackerStage: activeJob.trackerStage,
+        }
+        res.status(200).send(jobDetails);
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
 }
 
 const findWork = async (req, res, next) => {
     const { location } = req.body;
     if (!location.length) return res.sendStatus(400);
     const geojsonPoint = { type: 'Point', coordinates: location } 
-    // get profile of fixer or attempt to do so during aggregation?
+
     const profile = await Fixer.findOne({ email: req.email }).exec();
     if (!profile) return res.redirect('/fixer/logout');
     if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
@@ -257,27 +277,30 @@ const findWork = async (req, res, next) => {
             { $limit: 10 }, // only one request will be matched, so we can limit to a pool of eligible candidates (adjust number if needed).
         ]);
         // loop through multiple candidates in the event that a request was matched after aggregation and before updateOne (thinking about a scenario with many requests in a busy area)
-        // consider making this a transaction to ensure data is consistent between multiple related operations
+        // NOTE: consider making this a transaction to ensure data is consistent between multiple related operations
         for await (const activeRequest of activeRequests) {
             try {
-                // if it turns out values from the updated document are needed, we can use findOneAndUpdate instead (new: true)
-                const response = await Request.findOneAndUpdate(
+                const assignedJob = await Request.findOneAndUpdate(
                     { _id: activeRequest._id, active: true },
                     { active: false, currentStatus: 'in progress', trackerStage: 'en route', assignedAt: new Date(), fixer: profile._id },
                     { runValidators: true, new: true, context: 'query', previous: activeRequest.active } // make sure we're not dealing with a stale active value
                 )
                     .populate('user', 'name phoneNumber')
                     .exec();
-                if (!response) {
+                if (!assignedJob) {
                     continue;
                 } else {
                     profile.activeJob = activeRequest._id;
                     profile.currentLocation = geojsonPoint;
                     await profile.save();
                     const jobDetails = {
-
+                        userLocation: assignedJob.location.coordinates,
+                        firstName: assignedJob.user.name.first,
+                        lastName: assignedJob.user.name.last,
+                        phoneNumber: assignedJob.user.phoneNumber,
+                        trackerStage: assignedJob.trackerStage,
                     }
-                    return res.status(201).send(jobDetails)
+                    return res.status(201).send(jobDetails);
                 }
             } catch (err) {
                 continue; // if validation fails (or other error), move to next closest candidate

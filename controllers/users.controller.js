@@ -276,11 +276,14 @@ const currentRequest = async (req, res, next) => {
             .populate('fixer', 'name phoneNumber rating currentLocation') // in production it may be best to wait to send currentLocation for privacy reasons
             .exec();
         if (!activeJob) return res.sendStatus(404);
-        // what to send back? location (user), trackerStage, firstName, phoneNumber, currentLocation (fixer)
         const jobDetails = {
-
+            userLocation: activeJob.location.coordinates,
+            fixerLocation: activeJob.fixer.currentLocation.coordinates,
+            trackerStage: activeJob.trackerStage,
+            name: activeJob.fixer.name.first,
+            phoneNumber: activeJob.fixer.phoneNumber,
         }
-        res.status(201).send(jobDetails);
+        res.status(200).send(jobDetails);
     } catch (err) {
         res.status(500).send(err.message);
     }
