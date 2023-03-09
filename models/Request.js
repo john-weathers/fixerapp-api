@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
-// requestStatus validation will rely on grabbing pre-update requestStatus value and passing this in via the options object to updateOne (or similar)
+// look into transforming populated documents, if needed
 
-// note: populated documents can be transformed and there are autopopulate pre save hooks/a plugin if desired
+// a more robust matching system (in terms of matching appropriately skilled technicians) would require some type of categorization
+// as well as perhaps notes/images of the issue in need of repair
 
 const requestSchema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -41,13 +42,21 @@ const requestSchema = new Schema({
     trackerStage: {
       type: String,
       enum: ['en route', 'arriving', 'fixing', 'complete' ],
-    }, 
+    },
+    route: {
+      coordinates: [[Number]],
+      instructions: [String],
+      duration: Number,
+      lastUpdatedAt: Date,
+    },
+    estimate: Number, 
     requestedAt: {
       type: Date,
       required: true,
       default: new Date(),
     },
     assignedAt: Date,
+    workStartedAt: Date,
     fulfilledAt: Date,
     fixer: { type: Schema.Types.ObjectId, ref: 'Fixer' }, // can populate specific fields here...(name, phoneNumber, currentLocation, rating?)
 });

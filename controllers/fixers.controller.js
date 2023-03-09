@@ -3,6 +3,8 @@ const Fixer = require('../models/Fixer');
 const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const mbxDirections = require('@mapbox/mapbox-sdk/services/directions');
+const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
 
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
@@ -244,6 +246,7 @@ const currentWork = async (req, res, next) => {
             lastName: activeJob.user.name.last,
             phoneNumber: activeJob.user.phoneNumber,
             trackerStage: activeJob.trackerStage,
+            route: activeJob?.route,
         }
         res.status(200).send(jobDetails);
     } catch (err) {
@@ -299,6 +302,7 @@ const findWork = async (req, res, next) => {
                         lastName: assignedJob.user.name.last,
                         phoneNumber: assignedJob.user.phoneNumber,
                         trackerStage: assignedJob.trackerStage,
+                        route: assignedJob?.route, 
                     }
                     return res.status(201).send(jobDetails);
                 }
@@ -311,6 +315,40 @@ const findWork = async (req, res, next) => {
         res.sendStatus(500);
     }
 
+}
+
+const updateDirections = async (req, res, next) => {
+    mapboxClient.directions.getDirections({
+        profile: travelMode,
+        steps: true,
+        geometries: 'geojson',
+        waypoints: waypoints.map((coords) => {
+          return {
+            coordinates: coords
+          }
+        })
+      })
+        .send()
+        .then(response => {
+          const data = response.body;
+          console.log(data);
+          const routeObject = data.routes[0]
+          const routeData = routeObject.geometry.coordinates;
+          const routeInstructions = routeObject.legs[0].steps;
+          const routeDuration = Math.ceil(routeObject.duration / 60)
+          setRoute({
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: routeData,
+            }
+          })
+          setRouteInfo({
+            instructions: routeInstructions,
+            duration: routeDuration,
+          })
+        })
 }
 
 // cancel an in progress job
@@ -327,5 +365,6 @@ module.exports = {
     handleGetProfile,
     currentWork,
     findWork,
+    updateDirections,
     cancelJob, 
 }

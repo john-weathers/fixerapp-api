@@ -282,6 +282,7 @@ const currentRequest = async (req, res, next) => {
             trackerStage: activeJob.trackerStage,
             name: activeJob.fixer.name.first,
             phoneNumber: activeJob.fixer.phoneNumber,
+            eta: activeJob?.route?.duration,
         }
         res.status(200).send(jobDetails);
     } catch (err) {
