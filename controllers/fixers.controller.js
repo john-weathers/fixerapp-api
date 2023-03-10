@@ -4,7 +4,10 @@ const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mbxDirections = require('@mapbox/mapbox-sdk/services/directions');
+const circle = require('@turf/circle').default;
+const booleanPointInPolygon = require('@turf/boolean-point-in-polygon').default;
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
+const directionsService = mbxDirections({ accessToken: MAPBOX_TOKEN });
 
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
@@ -242,6 +245,7 @@ const currentWork = async (req, res, next) => {
         if (activeJob?.currentStatus !== 'in progress') return res.sendStatus(404);
         const jobDetails = {
             userLocation: activeJob.location.coordinates,
+            userAddress: activeJob.userAddress,
             firstName: activeJob.user.name.first,
             lastName: activeJob.user.name.last,
             phoneNumber: activeJob.user.phoneNumber,
@@ -298,6 +302,7 @@ const findWork = async (req, res, next) => {
                     await profile.save();
                     const jobDetails = {
                         userLocation: assignedJob.location.coordinates,
+                        userAddress: assignedJob.userAddress,
                         firstName: assignedJob.user.name.first,
                         lastName: assignedJob.user.name.last,
                         phoneNumber: assignedJob.user.phoneNumber,
@@ -318,37 +323,57 @@ const findWork = async (req, res, next) => {
 }
 
 const updateDirections = async (req, res, next) => {
-    mapboxClient.directions.getDirections({
-        profile: travelMode,
-        steps: true,
-        geometries: 'geojson',
-        waypoints: waypoints.map((coords) => {
-          return {
-            coordinates: coords
-          }
-        })
-      })
-        .send()
-        .then(response => {
-          const data = response.body;
-          console.log(data);
-          const routeObject = data.routes[0]
-          const routeData = routeObject.geometry.coordinates;
-          const routeInstructions = routeObject.legs[0].steps;
-          const routeDuration = Math.ceil(routeObject.duration / 60)
-          setRoute({
-            type: 'Feature',
-            properties: {},
-            geometry: {
-              type: 'LineString',
-              coordinates: routeData,
-            }
+    const { fixerLocation } = req.body;
+
+    try {
+        const profile = await Fixer.findOneAndUpdate({ email: req.email }, { 'currentLocation.coordinates': fixerLocation })
+            .populate('activeJob')
+            .exec();
+
+        if (!profile?.activeJob) return res.sendStatus(404);
+        if (profile.activeJob.currentStatus !== 'in progress') return res.sendStatus(400);
+
+        const geofence = circle(profile.activeJob.location.coordinates, 0.25, {units: 'miles'});
+
+        if (booleanPointInPolygon([-122.419, 37.775], geofence)) {
+            const response = await Request.updateOne(
+                { _id: profile.activeJob._id, currentStatus: 'in progress', trackerStage: 'en route' },
+                { trackerStage: 'arriving' }
+            );
+            if (!response.modifiedCount) return res.sendStatus(500);
+            return res.sendStatus(200);
+        }
+
+        if (!mongoose.isObjectIdOrHexString(profile.activeJob._id)) return res.sendStatus(500);
+        if (profile.activeJob?.route?.duration && ((new Date() + 180000) - profile.activeJob.assignedAt) / 1000 < profile.activeJob.route.duration) return res.sendStatus(200);
+        
+        const assignedJob = Request.findOne({ _id: profile.activeJob._id, currentStatus: 'in progress' }).exec();
+        if (!assignedJob.location.coordinates) return res.sendStatus(404);
+        let routeObject;
+
+        directionsService.getDirections({
+            profile: 'driving-traffic',
+            steps: true,
+            geometries: 'geojson',
+            waypoints: [
+                { coordinates: fixerLocation },
+                { coordinates: assignedJob.location.coordinates },
+            ]
           })
-          setRouteInfo({
-            instructions: routeInstructions,
-            duration: routeDuration,
-          })
-        })
+            .send()
+            .then(response => {
+              const data = response.body;
+              routeObject = data.routes[0];
+            })
+
+        assignedJob.route.coordinates = routeObject.geometry.coordinates;
+        assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
+        assignedJob.route.duration = routeObject.duration;
+        await assignedJob.save();
+        res.sendStatus(200);
+    } catch (err) {
+        res.sendStatus(500);
+    }
 }
 
 // cancel an in progress job

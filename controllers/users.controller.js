@@ -233,8 +233,8 @@ const handleGetProfile = async (req, res, next) => {
 }
 
 const fixRequest = async (req, res, next) => {
-    const { location } = req.body;
-    if (!location.length) return res.sendStatus(400);
+    const { location, address } = req.body;
+    if (!location.length || !address) return res.sendStatus(400);
 
     try {
         const profile = await User.findOne({ email: req.email }).exec();
@@ -246,7 +246,7 @@ const fixRequest = async (req, res, next) => {
         // revisit if this needs to be beefed up to deal with those type of edge cases
         const response = await Request.updateOne(
             { user: profile._id, active: true },
-            { user: profile._id, location: { type: 'Point', coordinates: location }, active: true, requestedAt: new Date() },
+            { user: profile._id, location: { type: 'Point', coordinates: location }, userAddress: address, active: true, requestedAt: new Date() },
             { upsert: true, /*session: session*/  }
         );
 
@@ -278,11 +278,12 @@ const currentRequest = async (req, res, next) => {
         if (!activeJob) return res.sendStatus(404);
         const jobDetails = {
             userLocation: activeJob.location.coordinates,
+            userAddress: activeJob.userAddress,
             fixerLocation: activeJob.fixer.currentLocation.coordinates,
             trackerStage: activeJob.trackerStage,
             name: activeJob.fixer.name.first,
             phoneNumber: activeJob.fixer.phoneNumber,
-            eta: activeJob?.route?.duration,
+            eta: activeJob?.route?.duration, // will be in seconds, conversions can happen on f/e
         }
         res.status(200).send(jobDetails);
     } catch (err) {

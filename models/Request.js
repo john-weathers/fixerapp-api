@@ -8,7 +8,7 @@ const Schema = mongoose.Schema;
 
 const requestSchema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    // set up for $geoNear functionality
+    userAddress: String,
     location: {
         type: {
             type: String,
@@ -41,7 +41,7 @@ const requestSchema = new Schema({
     },
     trackerStage: {
       type: String,
-      enum: ['en route', 'arriving', 'fixing', 'complete' ],
+      enum: ['en route', 'arriving', 'estimating', 'fixing', 'complete' ],
     },
     route: {
       coordinates: [[Number]],
