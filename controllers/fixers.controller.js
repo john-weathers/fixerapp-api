@@ -349,9 +349,8 @@ const updateDirections = async (req, res, next) => {
         
         const assignedJob = Request.findOne({ _id: profile.activeJob._id, currentStatus: 'in progress' }).exec();
         if (!assignedJob.location.coordinates) return res.sendStatus(404);
-        let routeObject;
 
-        directionsService.getDirections({
+        const response = await directionsService.getDirections({
             profile: 'driving-traffic',
             steps: true,
             geometries: 'geojson',
@@ -360,12 +359,10 @@ const updateDirections = async (req, res, next) => {
                 { coordinates: assignedJob.location.coordinates },
             ]
           })
-            .send()
-            .then(response => {
-              const data = response.body;
-              routeObject = data.routes[0];
-            })
-
+            .send();
+        const data = response.body;
+        const routeObject = data.routes[0];
+        
         assignedJob.route.coordinates = routeObject.geometry.coordinates;
         assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
         assignedJob.route.duration = routeObject.duration;

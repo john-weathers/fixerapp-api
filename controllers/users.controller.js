@@ -3,6 +3,8 @@ const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const { findOne } = require('../models/Request');
+// const { closeChangeStream } = require('../helpers/changeStream');
 
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
@@ -234,6 +236,7 @@ const handleGetProfile = async (req, res, next) => {
 
 const fixRequest = async (req, res, next) => {
     const { location, address } = req.body;
+    let responseSent = false;
     if (!location.length || !address) return res.sendStatus(400);
 
     try {
@@ -244,14 +247,54 @@ const fixRequest = async (req, res, next) => {
 
         // logic elsewhere should prevent user creating additional requests if they already have a request in progress
         // revisit if this needs to be beefed up to deal with those type of edge cases
-        const response = await Request.updateOne(
+        const newRequest = await Request.findOneAndUpdate(
             { user: profile._id, active: true },
             { user: profile._id, location: { type: 'Point', coordinates: location }, userAddress: address, active: true, requestedAt: new Date() },
-            { upsert: true, /*session: session*/  }
+            { upsert: true }
         );
+        if (!mongoose.isObjectIdOrHexString(newRequest._id)) return res.sendStatus(500);
 
-        if (!response.modifiedCount && !response.upsertedCount) return res.sendStatus(500);
-        res.status(201).send('request successfully created!');
+        const pipeline = [
+            {
+              $match: {
+                operationType: 'update',
+                'documentKey._id': newRequest._id,
+                'updateDescription.updatedFields.currentStatus': 'in progress',
+                'updateDescription.updatedFields.active': false,
+              }
+            }
+          ];
+
+        const changeStream = Request.watch(pipeline, { fullDocument: 'updateLookup' }).on('change', change => {
+            const jobDetails = {
+                userLocation: change.fullDocument.location.coordinates,
+                userAddress: change.fullDocument.userAddress,
+                fixerLocation: change.fullDocument.fixer.currentLocation.coordinates,
+                trackerStage: change.fullDocument.trackerStage,
+                name: change.fullDocument.fixer.name.first,
+                phoneNumber: change.fullDocument.fixer.phoneNumber,
+                eta: change.fullDocument?.route?.duration, // will be in seconds, conversions can happen on f/e
+            }
+            res.status(200).send(jobDetails);
+            responseSent = true;
+        });
+
+        const closeChangeStream = () => {
+            return new Promise((resolve) => {
+                setTimeout(async () => {
+                    console.log('Closing the change stream');
+                    const currentRequest = await Request.findOne({ user: profile._id, active: true });
+                    if (!responseSent && newRequest.requestedAt === currentRequest?.requestedAt) res.sendStatus(408);
+                    changeStream.close();
+                    resolve();
+                }, 120000);
+            });
+        }
+
+        await closeChangeStream();
+
+        /*if (!response.modifiedCount && !response.upsertedCount) return res.sendStatus(500);
+        res.status(201).send('request successfully created!');*/
 
         // theoretically can use scheduled triggers to keep the requests collection lean (e.g., active requests that are older than x time should be changed to 'failed'
         // and/or can move any requests past a certain age to a separate archive collection, etc.)
