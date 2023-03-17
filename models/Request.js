@@ -9,13 +9,20 @@ const Schema = mongoose.Schema;
 const requestSchema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     userAddress: String,
-    location: {
+    userLocation: {
         type: {
             type: String,
             enum: ['Point'],
         },
         coordinates: [Number],
         required: true,
+    },
+    fixerLocation: {
+      type: {
+        type: String,
+        enum: ['Point'],
+      },
+      coordinates: [Number],
     },
     active: {
       type: Boolean,

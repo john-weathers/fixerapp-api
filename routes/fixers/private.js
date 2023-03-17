@@ -7,7 +7,7 @@ const {
 } = require('../../controllers/fixers.controller');
 const router = express.Router();
 
-router.all(verifyFixerJWT, verifyRoles(ROLES.fixer, ROLES.premiumFixer));
+router.use(verifyFixerJWT, verifyRoles(ROLES.fixer, ROLES.premiumFixer));
 router.get('/profile', handleGetProfile);
 
 const workRouter = require('./work');

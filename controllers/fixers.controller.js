@@ -9,6 +9,8 @@ const booleanPointInPolygon = require('@turf/boolean-point-in-polygon').default;
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
 const directionsService = mbxDirections({ accessToken: MAPBOX_TOKEN });
 
+// TODO: need to update all previous location properties for Request queries and any fixer location properties (which will now live on Request model)
+
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
 
@@ -289,7 +291,7 @@ const findWork = async (req, res, next) => {
             try {
                 const assignedJob = await Request.findOneAndUpdate(
                     { _id: activeRequest._id, active: true },
-                    { active: false, currentStatus: 'in progress', trackerStage: 'en route', assignedAt: new Date(), fixer: profile._id },
+                    { active: false, currentStatus: 'in progress', fixerLocation: geojsonPoint, trackerStage: 'en route', assignedAt: new Date(), fixer: profile._id },
                     { runValidators: true, new: true, context: 'query', previous: activeRequest.active } // make sure we're not dealing with a stale active value
                 )
                     .populate('user', 'name phoneNumber')
@@ -298,9 +300,10 @@ const findWork = async (req, res, next) => {
                     continue;
                 } else {
                     profile.activeJob = activeRequest._id;
-                    profile.currentLocation = geojsonPoint;
                     await profile.save();
+                    // directions api call here?
                     const jobDetails = {
+                        jobId: assignedJob._id, 
                         userLocation: assignedJob.location.coordinates,
                         userAddress: assignedJob.userAddress,
                         firstName: assignedJob.user.name.first,
@@ -362,7 +365,7 @@ const updateDirections = async (req, res, next) => {
             .send();
         const data = response.body;
         const routeObject = data.routes[0];
-        
+
         assignedJob.route.coordinates = routeObject.geometry.coordinates;
         assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
         assignedJob.route.duration = routeObject.duration;

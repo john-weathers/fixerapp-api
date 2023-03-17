@@ -54,13 +54,7 @@ const fixerSchema = new Schema({
         },
         coordinates: [Number],
     },
-    currentLocation: {
-        type: {
-            type: String,
-            enum: ['Point'],
-        },
-        coordinates: [Number],
-    },
+    defaultAddress: String,
     ratings: [Number],
     rating: {
         type: Number,

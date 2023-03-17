@@ -56,6 +56,7 @@ const userSchema = new Schema({
         },
         coordinates: [Number],
     },
+    defaultAddress: String,
     ratings: [Number],
     rating: {
         type: Number,

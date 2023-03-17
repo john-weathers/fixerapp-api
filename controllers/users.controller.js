@@ -3,8 +3,8 @@ const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const { findOne } = require('../models/Request');
-// const { closeChangeStream } = require('../helpers/changeStream');
+
+// TODO: need to update all previous location properties for Request queries and any fixer location properties (which will now live on Request model)
 
 // revisit sameSite cookie settings
 // revisit sending roles in login and refresh handlers
