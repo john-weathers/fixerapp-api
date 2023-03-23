@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const ROLES = require('../config/roles');
+const Fixer = require('../models/Fixer');
+const circle = require('@turf/circle').default;
+const booleanPointInPolygon = require('@turf/boolean-point-in-polygon').default;
 
 const fixerSocketHandler = nsp => {
   nsp.use((socket, next) => {
@@ -28,8 +31,40 @@ const fixerSocketHandler = nsp => {
       console.log('a user disconnected');
     });
 
+    
+
+    socket.on('work found', async (callback) => {
+      try {
+        const { activeJob } = await Fixer.findOne({ email: socket.email }).exec();
+        if (!activeJob) throw new Error('No job found')
+        socket.join(String(activeJob));
+        callback({
+          status: 'OK'
+        });
+      } catch (err) {
+        callback({
+          status: 'NOK',
+        })
+      }
+    })
+
     // update fixer location
-    socket.on('update location')
+    socket.on('update location', async (data) => {
+      const { location, jobId } = data;
+      try {
+        
+      } catch (err) {
+        
+      }
+    })
+
+    socket.on('arriving', async (jobId, callback) => {
+      try {
+
+      } catch (err) {
+
+      }
+    })
   })
 }
 

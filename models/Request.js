@@ -54,7 +54,7 @@ const requestSchema = new Schema({
       coordinates: [[Number]],
       instructions: [String],
       duration: Number,
-      lastUpdatedAt: Date,
+      lastUpdatedAt: Date, // remove?
     },
     estimate: Number, 
     requestedAt: {

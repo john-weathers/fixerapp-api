@@ -234,6 +234,7 @@ const handleGetProfile = async (req, res, next) => {
     }
 }
 
+// replaced with websocket functionality
 const fixRequest = async (req, res, next) => {
     const { location, address } = req.body;
     let responseSent = false;
@@ -323,10 +324,13 @@ const currentRequest = async (req, res, next) => {
             userLocation: activeJob.location.coordinates,
             userAddress: activeJob.userAddress,
             fixerLocation: activeJob.fixer.currentLocation.coordinates,
+            currentStatus: activeJob.currentStatus,
+            assignedAt: activeJob.assignedAt,
             trackerStage: activeJob.trackerStage,
-            name: activeJob.fixer.name.first,
+            fixerName: activeJob.fixer.name.first,
+            fixerRating: activeJob.fixer?.rating,
             phoneNumber: activeJob.fixer.phoneNumber,
-            eta: activeJob?.route?.duration, // will be in seconds, conversions can happen on f/e
+            eta: activeJob.route.duration, // will be in seconds, conversions can happen on f/e
         }
         res.status(200).send(jobDetails);
     } catch (err) {
@@ -335,6 +339,7 @@ const currentRequest = async (req, res, next) => {
 
 }
 
+// replaced with websocket functionality
 const cancelRequest = async (req, res, next) => {
     const profile = await User.findOne({ email: req.email }).exec();
     // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here

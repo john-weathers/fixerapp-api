@@ -1,11 +1,12 @@
 const ResumeToken = require('../models/ResumeToken');
 
-const errListener = async (stream, token) => {
+const errListener = async (userNsp, fixerNsp, stream, token, err) => {
   stream.on('error', async () => {
+    err.state = true;
     try {
       // if there's an error with the change stream, and resume token available, call watcher with token
       if (token) {
-        watcher(io, token);
+        watcher(userNsp, fixerNsp, token);
         await ResumeToken.create({
           collectionName: 'requests',
           token,
@@ -18,7 +19,7 @@ const errListener = async (stream, token) => {
         } catch (err) {
           console.log(err.message);
         }
-        watcher(io, backupToken); // works regardless of any outcome with find, whether that is finding a token, not finding a token, or encountering an error
+        watcher(userNsp, fixerNsp, backupToken); // works regardless of any outcome with find, whether that is finding a token, not finding a token, or encountering an error
       }
       stream.close() // not sure if this will work or if it's necessary, but including to be safe
     } catch (err) {

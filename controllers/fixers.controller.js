@@ -8,6 +8,7 @@ const circle = require('@turf/circle').default;
 const booleanPointInPolygon = require('@turf/boolean-point-in-polygon').default;
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
 const directionsService = mbxDirections({ accessToken: MAPBOX_TOKEN });
+const assert = require('assert');
 
 // TODO: need to update all previous location properties for Request queries and any fixer location properties (which will now live on Request model)
 
@@ -251,8 +252,10 @@ const currentWork = async (req, res, next) => {
             firstName: activeJob.user.name.first,
             lastName: activeJob.user.name.last,
             phoneNumber: activeJob.user.phoneNumber,
+            currentStatus: activeJob.currentStatus,
             trackerStage: activeJob.trackerStage,
-            route: activeJob?.route,
+            assignedAt: activeJob.assignedAt,
+            route: activeJob.route, 
         }
         res.status(200).send(jobDetails);
     } catch (err) {
@@ -288,43 +291,78 @@ const findWork = async (req, res, next) => {
         // loop through multiple candidates in the event that a request was matched after aggregation and before updateOne (thinking about a scenario with many requests in a busy area)
         // NOTE: consider making this a transaction to ensure data is consistent between multiple related operations
         for await (const activeRequest of activeRequests) {
+            const session = await mongoose.startSession();
             try {
+                session.startTransaction();
                 const assignedJob = await Request.findOneAndUpdate(
                     { _id: activeRequest._id, active: true },
                     { active: false, currentStatus: 'in progress', fixerLocation: geojsonPoint, trackerStage: 'en route', assignedAt: new Date(), fixer: profile._id },
-                    { runValidators: true, new: true, context: 'query', previous: activeRequest.active } // make sure we're not dealing with a stale active value
+                    { runValidators: true, session: session, new: true, context: 'query', previous: activeRequest.active } // make sure we're not dealing with a stale active value
                 )
                     .populate('user', 'name phoneNumber')
                     .exec();
                 if (!assignedJob) {
+                    await session.abortTransaction();
+                    session.endSession();
                     continue;
                 } else {
+                    /*profile.$session(session) // test to double check that this works (shouldn't be a problem)
+                    // for now passing session to updateOne is fine
                     profile.activeJob = activeRequest._id;
-                    await profile.save();
-                    // directions api call here?
+                    await profile.save();*/ 
+
+                    await Fixer.updateOne({ email: req.email }, { activeJob: activeRequest._id }, { session: session });
+                    
+                    const response = await directionsService.getDirections({
+                        profile: 'driving-traffic',
+                        steps: true,
+                        geometries: 'geojson',
+                        waypoints: [
+                            { coordinates: location },
+                            { coordinates: assignedJob.userLocation.coordinates },
+                        ]
+                        })
+                        .send();
+                    const data = response.body;
+                    const routeObject = data.routes[0];
+            
+                    assert.ok(assignedJob.$session())
+                    assignedJob.route.coordinates = routeObject.geometry.coordinates;
+                    assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
+                    assignedJob.route.duration = routeObject.duration;
+                    await assignedJob.save();
+
+                    await session.commitTransaction();
+
                     const jobDetails = {
-                        jobId: assignedJob._id, 
+                        jobId: assignedJob._id,
                         userLocation: assignedJob.location.coordinates,
                         userAddress: assignedJob.userAddress,
                         firstName: assignedJob.user.name.first,
                         lastName: assignedJob.user.name.last,
                         phoneNumber: assignedJob.user.phoneNumber,
+                        currentStatus: assignedJob.currentStatus,
                         trackerStage: assignedJob.trackerStage,
-                        route: assignedJob?.route, 
+                        assignedAt: assignedJob.assignedAt,
+                        route: assignedJob.route, 
                     }
                     return res.status(201).send(jobDetails);
                 }
+
             } catch (err) {
+                await session.abortTransaction();
+                session.endSession();
                 continue; // if validation fails (or other error), move to next closest candidate
             }
         }
-        res.sendStatus(500);
+        res.sendStatus(404);
     } catch (err) {
         res.sendStatus(500);
     }
 
 }
 
+// needs updating
 const updateDirections = async (req, res, next) => {
     const { fixerLocation } = req.body;
 
