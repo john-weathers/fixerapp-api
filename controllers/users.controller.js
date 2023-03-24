@@ -330,7 +330,7 @@ const currentRequest = async (req, res, next) => {
             fixerName: activeJob.fixer.name.first,
             fixerRating: activeJob.fixer?.rating,
             phoneNumber: activeJob.fixer.phoneNumber,
-            eta: activeJob.route.duration, // will be in seconds, conversions can happen on f/e
+            eta: activeJob.eta, // will be in seconds, conversions can happen on f/e
         }
         res.status(200).send(jobDetails);
     } catch (err) {

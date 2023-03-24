@@ -3,13 +3,13 @@ const {
   currentWork, 
   findWork,
   updateDirections,
-  cancelJob,
+  handleArrival,
 } = require('../../controllers/fixers.controller');
 const router = express.Router();
 
 router.get('/current', currentWork);
 router.post('/find', findWork);
 router.patch('/directions', updateDirections);
-router.post('/cancel', cancelJob);
+router.patch('/arrival', handleArrival)
 
 module.exports = router;

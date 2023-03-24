@@ -2,8 +2,8 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const ROLES = require('../config/roles');
 const Fixer = require('../models/Fixer');
-const circle = require('@turf/circle').default;
-const booleanPointInPolygon = require('@turf/boolean-point-in-polygon').default;
+const Request = require('../models/Request');
+const mongoose = require('mongoose');
 
 const fixerSocketHandler = nsp => {
   nsp.use((socket, next) => {
@@ -27,11 +27,10 @@ const fixerSocketHandler = nsp => {
 
   nsp.on('connection', (socket) => {
     console.log('a user connected');
+
     socket.on('disconnect', () => {
       console.log('a user disconnected');
     });
-
-    
 
     socket.on('work found', async (callback) => {
       try {
@@ -46,25 +45,51 @@ const fixerSocketHandler = nsp => {
           status: 'NOK',
         })
       }
-    })
+    });
 
     // update fixer location
     socket.on('update location', async (data) => {
       const { location, jobId } = data;
-      try {
-        
-      } catch (err) {
-        
+      const geojsonPoint = {
+        type: 'Point',
+        coordinates: location,
       }
-    })
+      try {
+        await Request.updateOne({ _id: jobId }, { fixerLocation: geojsonPoint });
+      } catch (err) {
+        console.log(err.message) // error handling may need to be more extensive...keep an eye on in testing
+      }
+    });
 
     socket.on('arriving', async (jobId, callback) => {
       try {
-
+        const response = await Request.updateOne({ _id: jobId }, { trackerStage: 'arriving' });
+        if (response.modifiedCount) callback({
+          status: 'OK',
+        });
       } catch (err) {
+        callback({
+          status: 'NOK',
+        })
+      }
+    });
 
+    socket.on('cancel job', async (data, callback) => {
+      const { jobId } = data;
+      try {
+        const cancelledRequest = await Request.findOneAndUpdate({ _id: jobId }, { currentStatus: 'cancelled' });
+        if (!cancelledRequest || !mongoose.isObjectIdOrHexString(cancelledRequest._id)) throw new Error('NOK');
+        socket.leave(String(cancelledRequest._id));
+        callback({
+          status: 'OK',
+        })
+      } catch (err) {
+        callback({
+          status: 'NOK',
+        })
       }
     })
+
   })
 }
 

@@ -56,6 +56,7 @@ const requestSchema = new Schema({
       duration: Number,
       lastUpdatedAt: Date, // remove?
     },
+    eta: Date,
     estimate: Number, 
     requestedAt: {
       type: Date,

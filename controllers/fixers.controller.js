@@ -327,16 +327,35 @@ const findWork = async (req, res, next) => {
                     const routeObject = data.routes[0];
             
                     assert.ok(assignedJob.$session())
+                    // not sure if each of these counts as a separate updateOne under the hood
+                    // if so, it could be better to combine into one update operation depending on how the final watcher function pipeline is constructed
                     assignedJob.route.coordinates = routeObject.geometry.coordinates;
                     assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
                     assignedJob.route.duration = routeObject.duration;
+                    const addedTime = (routeObject.duration * 1000) + 180000;
+                    assignedJob.eta = new Date(dateTime.getTime() + addedTime); // NOTE: need to fix this and any other similar calculations with date
+                    // this will not evaluate as expected
+                    // try (e.g.): new Date(dateTime.getTime() + (5 * 60000))
                     await assignedJob.save();
 
-                    await session.commitTransaction();
+                    /*const routeData = {
+                        coordinates: routeObject.geometry.coordinates,
+                        instructions: routeObject.legs[0].steps.map(step => step.maneuver.instruction),
+                        duration: routeObject.duration,
+                    }
+                    const addedTime = (routeObject.duration * 1000) + 180000;
+                    const eta = new Date(dateTime.getTime() + addedTime)
 
+                    const jobDetailsFull = await Request.updateOne({  }) create single call to update one depending on how assignment updates work under the hood
+                    see above comment for details
+                    */
+
+                    await session.commitTransaction();
+                    
                     const jobDetails = {
                         jobId: assignedJob._id,
-                        userLocation: assignedJob.location.coordinates,
+                        fixerLocation: assignedJob.fixerLocation.coordinates,
+                        userLocation: assignedJob.userLocation.coordinates,
                         userAddress: assignedJob.userAddress,
                         firstName: assignedJob.user.name.first,
                         lastName: assignedJob.user.name.last,
@@ -344,7 +363,8 @@ const findWork = async (req, res, next) => {
                         currentStatus: assignedJob.currentStatus,
                         trackerStage: assignedJob.trackerStage,
                         assignedAt: assignedJob.assignedAt,
-                        route: assignedJob.route, 
+                        route: assignedJob.route,
+                        eta: assignedJob.eta, 
                     }
                     return res.status(201).send(jobDetails);
                 }
@@ -362,42 +382,23 @@ const findWork = async (req, res, next) => {
 
 }
 
-// needs updating
 const updateDirections = async (req, res, next) => {
-    const { fixerLocation } = req.body;
+    const { jobId, location } = req.body;
 
     try {
-        const profile = await Fixer.findOneAndUpdate({ email: req.email }, { 'currentLocation.coordinates': fixerLocation })
-            .populate('activeJob')
-            .exec();
+        if (!mongoose.isObjectIdOrHexString(jobId)) return res.sendStatus(500);
+        if (!location.length) return res.sendStatus(400);
 
-        if (!profile?.activeJob) return res.sendStatus(404);
-        if (profile.activeJob.currentStatus !== 'in progress') return res.sendStatus(400);
-
-        const geofence = circle(profile.activeJob.location.coordinates, 0.25, {units: 'miles'});
-
-        if (booleanPointInPolygon([-122.419, 37.775], geofence)) {
-            const response = await Request.updateOne(
-                { _id: profile.activeJob._id, currentStatus: 'in progress', trackerStage: 'en route' },
-                { trackerStage: 'arriving' }
-            );
-            if (!response.modifiedCount) return res.sendStatus(500);
-            return res.sendStatus(200);
-        }
-
-        if (!mongoose.isObjectIdOrHexString(profile.activeJob._id)) return res.sendStatus(500);
-        if (profile.activeJob?.route?.duration && ((new Date() + 180000) - profile.activeJob.assignedAt) / 1000 < profile.activeJob.route.duration) return res.sendStatus(200);
-        
-        const assignedJob = Request.findOne({ _id: profile.activeJob._id, currentStatus: 'in progress' }).exec();
-        if (!assignedJob.location.coordinates) return res.sendStatus(404);
+        const assignedJob = Request.findOne({ _id: jobId, currentStatus: 'in progress' }).exec();
+        if (!assignedJob.userLocation.coordinates.length) return res.sendStatus(404);
 
         const response = await directionsService.getDirections({
             profile: 'driving-traffic',
             steps: true,
             geometries: 'geojson',
             waypoints: [
-                { coordinates: fixerLocation },
-                { coordinates: assignedJob.location.coordinates },
+                { coordinates: location },
+                { coordinates: assignedJob.userLocation.coordinates },
             ]
           })
             .send();
@@ -407,18 +408,31 @@ const updateDirections = async (req, res, next) => {
         assignedJob.route.coordinates = routeObject.geometry.coordinates;
         assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
         assignedJob.route.duration = routeObject.duration;
+        const addedTime = (routeObject.duration * 1000) + 120000;
+        assignedJob.eta = new Date(dateTime.getTime() + addedTime)
         await assignedJob.save();
-        res.sendStatus(200);
+
+        const jobDetails = {
+            route: assignedJob.route,
+            eta: assignedJob.eta,
+        }
+        res.status(200).send(jobDetails);
     } catch (err) {
         res.sendStatus(500);
     }
 }
 
-// cancel an in progress job
-// api request likely should originate from FixerConfirmation component
-const cancelJob = async (req, res, next) => {
-
+const handleArrival = async (req, res, next) => {
+    const { jobId } = req.body;
+    try {
+        const response = await Request.updateOne({ _id: jobId }, { trackerStage: 'arriving' });
+        if (!response.modifiedCount) return res.sendStatus(404);
+        res.sendStatus(200);
+      } catch (err) {
+        res.sendStatus(500);
+      }
 }
+
 
 module.exports = {
     handleLogin,
@@ -429,5 +443,5 @@ module.exports = {
     currentWork,
     findWork,
     updateDirections,
-    cancelJob, 
+    handleArrival,
 }

@@ -13,9 +13,10 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
         $and: [
           { operationType: 'update' },
           { $or: [
-            { 'updateDescription.updatedFields.currentStatus': { $exists: true } },
-            { 'updateDescription.updatedFields.trackerStage': { $exists: true } },
-            { 'updateDescription.updatedFields.fixerLocation': { $exists: true } }
+            { 'updateDescription.updatedFields.currentStatus': { $exists: true } }, // think about simplifying and sending on all updates
+            { 'updateDescription.updatedFields.trackerStage': { $exists: true } }, // becuase it might not make a difference
+            { 'updateDescription.updatedFields.fixerLocation': { $exists: true } },
+            { 'updateDescription.updatedFields.eta': { $exists: true } }
           ] }
         ]
       }
@@ -35,6 +36,7 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
         currentStatus: fullDocument.currentStatus,
         fixerLocation: fullDocument.fixerLocation.coordinates,
         trackerStage: fullDocument.trackerStage,
+        eta: fullDocument.eta,
         estimate: fullDocument?.estimate,
       });
       if (change.updateDescription.updatedFields?.currentStatus || change.updateDescription.updatedFields?.trackerStage) {

@@ -75,7 +75,7 @@ const userSocketHandler = nsp => {
       }
     })
 
-    socket.on('cancel request', async (callback) => { // should be fine but make sure arguments prior to callback aren't needed for acknowledgements to function properly
+    socket.on('cancel request', async (callback) => {
       try {
         const profile = await User.findOne({ email: socket.email }).exec();
         if (!profile || !mongoose.isObjectIdOrHexString(profile._id)) throw new Error('NOK');
