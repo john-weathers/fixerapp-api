@@ -100,6 +100,22 @@ const userSocketHandler = nsp => {
       }
     })
 
+    socket.on('cancel job', async (data, callback) => {
+      const { jobId } = data;
+      try {
+        const cancelledRequest = await Request.findOneAndUpdate({ _id: jobId }, { currentStatus: 'cancelled' });
+        if (!cancelledRequest || !mongoose.isObjectIdOrHexString(cancelledRequest._id)) throw new Error('NOK');
+        socket.leave(String(cancelledRequest._id));
+        callback({
+          status: 'OK',
+        })
+      } catch (err) {
+        callback({
+          status: 'NOK',
+        })
+      }
+    })
+
   })
 }
 

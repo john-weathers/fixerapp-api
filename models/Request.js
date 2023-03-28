@@ -48,7 +48,7 @@ const requestSchema = new Schema({
     },
     trackerStage: {
       type: String,
-      enum: ['en route', 'arriving', 'estimating', 'fixing', 'complete' ],
+      enum: ['en route', 'arriving', 'fixing', 'complete' ],
     },
     route: {
       coordinates: [[Number]],
@@ -57,7 +57,11 @@ const requestSchema = new Schema({
       lastUpdatedAt: Date, // remove?
     },
     eta: Date,
-    estimate: Number, 
+    quote: {
+      amount: Number,
+      details: [String],
+      pending: Boolean,
+    },
     requestedAt: {
       type: Date,
       required: true,

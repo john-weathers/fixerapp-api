@@ -7,7 +7,16 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
   // 'updateDescription.updatedFields.currentStatus': { $exists: true }, 
   //
   let changeStream;
+
   const pipeline = [
+    {
+      $match: {
+        operationType: 'update',
+      }
+    }
+  ]
+
+  /*const pipeline = [
     {
       $match: {
         $and: [
@@ -16,12 +25,12 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
             { 'updateDescription.updatedFields.currentStatus': { $exists: true } }, // think about simplifying and sending on all updates
             { 'updateDescription.updatedFields.trackerStage': { $exists: true } }, // becuase it might not make a difference
             { 'updateDescription.updatedFields.fixerLocation': { $exists: true } },
-            { 'updateDescription.updatedFields.eta': { $exists: true } }
+            { 'updateDescription.updatedFields.eta': { $exists: true } },
           ] }
         ]
       }
     }
-  ];
+  ];*/
   const err = {
     state: false,
   }
@@ -37,13 +46,14 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
         fixerLocation: fullDocument.fixerLocation.coordinates,
         trackerStage: fullDocument.trackerStage,
         eta: fullDocument.eta,
-        estimate: fullDocument?.estimate,
+        quote: fullDocument?.quote,
       });
       if (change.updateDescription.updatedFields?.currentStatus || change.updateDescription.updatedFields?.trackerStage) {
         fixerNsp.to(String(fullDocument._id)).emit('job update', {
           currentStatus: fullDocument.currentStatus,
           trackerStage: fullDocument.trackerStage,
-          estimate: fullDocument?.estimate,
+          quote: fullDocument?.quote,
+          workStartedAt: fullDocument?.workStartedAt,
         });
       }
       
@@ -61,13 +71,15 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
         currentStatus: fullDocument.currentStatus,
         fixerLocation: fullDocument.fixerLocation.coordinates,
         trackerStage: fullDocument.trackerStage,
-        estimate: fullDocument?.estimate,
+        eta: fullDocument.eta,
+        quote: fullDocument?.quote,
       });
       if (change.updateDescription.updatedFields?.currentStatus || change.updateDescription.updatedFields?.trackerStage) {
         fixerNsp.to(String(fullDocument._id)).emit('job update', {
           currentStatus: fullDocument.currentStatus,
           trackerStage: fullDocument.trackerStage,
-          estimate: fullDocument?.estimate,
+          quote: fullDocument?.quote,
+          workStartedAt: fullDocument?.workStartedAt,
         });
       }
     })
@@ -84,13 +96,15 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
             currentStatus: fullDocument.currentStatus,
             fixerLocation: fullDocument.fixerLocation.coordinates,
             trackerStage: fullDocument.trackerStage,
-            estimate: fullDocument?.estimate,
+            eta: fullDocument.eta,
+            quote: fullDocument?.quote,
           });
           if (change.updateDescription.updatedFields?.currentStatus || change.updateDescription.updatedFields?.trackerStage) {
             fixerNsp.to(String(fullDocument._id)).emit('job update', {
               currentStatus: fullDocument.currentStatus,
               trackerStage: fullDocument.trackerStage,
-              estimate: fullDocument?.estimate,
+              quote: fullDocument?.quote,
+              workStartedAt: fullDocument?.workStartedAt,
             });
           }
         })

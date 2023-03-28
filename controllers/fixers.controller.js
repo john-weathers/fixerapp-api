@@ -433,6 +433,43 @@ const handleArrival = async (req, res, next) => {
       }
 }
 
+const handleQuote = async (req, res, next) => {
+    const { quote, notes, jobId } = req.body;
+    if (notes.length > 1000) return res.sendStatus(400);
+    try {
+        const request = await Request.findOne({ _id: jobId }).exec();
+        if (!request) return res.sendStatus(404);
+        const quoteInfo = {
+            amount: quote,
+            details: [...request?.quote?.details, notes],
+            pending: true,
+        }
+        request.quote = quoteInfo;
+        await request.save();
+        res.sendStatus(200);
+    } catch (err) {
+        res.sendStatus(500);
+    }
+}
+
+const handleRevisedCost = async (req, res, next) => {
+    const { revisedCost, notes, jobId } = req.body;
+    if (notes.length > 500) return res.sendStatus(400);
+    try {
+        const request = await Request.findOne({ _id: jobId }).exec();
+        if (!request?.quote?.amount) return res.sendStatus(404);
+        const quoteInfo = {
+            amount: revisedCost,
+            details: [...request?.quote?.details, notes],
+            pending: true,
+        }
+        request.quote = quoteInfo;
+        await request.save();
+        res.sendStatus(200);
+    } catch (err) {
+        res.sendStatus(500);
+    }
+}
 
 module.exports = {
     handleLogin,
@@ -444,4 +481,6 @@ module.exports = {
     findWork,
     updateDirections,
     handleArrival,
+    handleQuote,
+    handleRevisedCost,
 }

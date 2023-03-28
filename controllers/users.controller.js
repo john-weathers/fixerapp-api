@@ -321,6 +321,7 @@ const currentRequest = async (req, res, next) => {
             .exec();
         if (!activeJob) return res.sendStatus(404);
         const jobDetails = {
+            jobId: activeJob._id,
             userLocation: activeJob.location.coordinates,
             userAddress: activeJob.userAddress,
             fixerLocation: activeJob.fixer.currentLocation.coordinates,
@@ -352,6 +353,32 @@ const cancelRequest = async (req, res, next) => {
     res.status(204).send('request successfully deleted')
 }
 
+const handleQuoteDecision = async (req, res, next) => {
+    const { accept, jobId } = req.body;
+    try {
+        if (accept) {
+            const request = await Request.findOne({ _id: jobId }).exec();
+            if (!request) return res.sendStatus(404);
+
+            if (!request?.workStartedAt) {
+                const response = await Request.updateOne({ _id: jobId }, { 'quote.pending': false, trackerStage: 'fixing', workStartedAt: new Date() });
+                if (!response.modifiedCount) return res.sendStatus(404);
+            } else {
+                const response = await Request.updateOne({ _id: jobId }, { 'quote.pending': false });
+                if (!response.modifiedCount) return res.sendStatus(404);
+            }
+            res.sendStatus(200);
+        } else {
+            const response = await Request.updateOne({ _id: jobId }, { 'quote.pending': false });
+            if (!response.modifiedCount) return res.sendStatus(404);
+            res.sendStatus(200);
+        }
+    } catch (err) {
+        res.sendStatus(500);
+    }
+    
+}
+
 module.exports = {
     handleRegistration,
     handleLogin,
@@ -361,4 +388,5 @@ module.exports = {
     fixRequest,
     currentRequest,
     cancelRequest,
+    handleQuoteDecision,
 }
