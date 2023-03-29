@@ -1,11 +1,10 @@
 const mongoose = require('mongoose');
 const Fixer = require('../models/Fixer');
+const User = require('../models/User');
 const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mbxDirections = require('@mapbox/mapbox-sdk/services/directions');
-const circle = require('@turf/circle').default;
-const booleanPointInPolygon = require('@turf/boolean-point-in-polygon').default;
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
 const directionsService = mbxDirections({ accessToken: MAPBOX_TOKEN });
 const assert = require('assert');
@@ -389,7 +388,7 @@ const updateDirections = async (req, res, next) => {
         if (!mongoose.isObjectIdOrHexString(jobId)) return res.sendStatus(500);
         if (!location.length) return res.sendStatus(400);
 
-        const assignedJob = Request.findOne({ _id: jobId, currentStatus: 'in progress' }).exec();
+        const assignedJob = await Request.findOne({ _id: jobId, currentStatus: 'in progress' }).exec();
         if (!assignedJob.userLocation.coordinates.length) return res.sendStatus(404);
 
         const response = await directionsService.getDirections({
@@ -471,6 +470,33 @@ const handleRevisedCost = async (req, res, next) => {
     }
 }
 
+const handleComplete = async (req, res, next) => {
+    const { jobId } = req.body;
+    try {
+        const response = await Request.updateOne({ _id: jobId }, { trackerStage: 'complete', currentStatus: 'fulfilled' });
+        if (!response.modifiedCount) return res.sendStatus(404);
+        res.sendStatus(200);
+    } catch (err) {
+        res.sendStatus(500);
+    }
+}
+
+const handleRating = async (req, res, next) => {
+    const { jobId, rating } = req.body;
+    if (!rating || rating < 1 || rating > 5) res.sendStatus(400);
+
+    try {
+        const { user } = await Request.findOne({ _id: jobId }).exec();
+        if (!user) res.sendStatus(404);
+
+        const response = await User.updateOne({ _id: jobId }, { $push: { ratings: rating } });
+        if (!response.modifiedCount) res.sendStatus(404);
+        res.sendStatus(200);
+    } catch (err) {
+        res.sendStatus(500);
+    }
+}
+
 module.exports = {
     handleLogin,
     handleRegistration,
@@ -483,4 +509,6 @@ module.exports = {
     handleArrival,
     handleQuote,
     handleRevisedCost,
+    handleComplete,
+    handleRating,
 }

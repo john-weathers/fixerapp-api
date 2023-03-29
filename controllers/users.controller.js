@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Fixer = require('../models/Fixer');
 const Request = require('../models/Request');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -376,7 +377,22 @@ const handleQuoteDecision = async (req, res, next) => {
     } catch (err) {
         res.sendStatus(500);
     }
-    
+}
+
+const handleRating = async (req, res, next) => {
+    const { jobId, rating } = req.body;
+    if (!rating || rating < 1 || rating > 5) res.sendStatus(400);
+
+    try {
+        const { fixer } = await Request.findOne({ _id: jobId }).exec();
+        if (!fixer) res.sendStatus(404);
+
+        const response = await Fixer.updateOne({ _id: jobId }, { $push: { ratings: rating } });
+        if (!response.modifiedCount) res.sendStatus(404);
+        res.sendStatus(200);
+    } catch (err) {
+        res.sendStatus(500);
+    }
 }
 
 module.exports = {
@@ -389,4 +405,5 @@ module.exports = {
     currentRequest,
     cancelRequest,
     handleQuoteDecision,
+    handleRating,
 }

@@ -6,6 +6,7 @@ const {
   handleArrival,
   handleQuote,
   handleRevisedCost,
+  handleRating,
 } = require('../../controllers/fixers.controller');
 const router = express.Router();
 
@@ -14,6 +15,7 @@ router.post('/find', findWork);
 router.patch('/directions', updateDirections);
 router.patch('/arrival', handleArrival);
 router.patch('/quote', handleQuote);
-router.patch('/revise-cost', handleRevisedCost)
+router.patch('/revise-cost', handleRevisedCost);
+router.patch('/rate-client', handleRating);
 
 module.exports = router;
