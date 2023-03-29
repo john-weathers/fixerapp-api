@@ -2,10 +2,6 @@ const Request = require('../models/Request');
 const { errListener } = require('./watcherHelpers');
 
 const watcher = async (userNsp, fixerNsp, resumeToken) => {
-  // I think best here will be operationType: update && (updated currentStatus || updated trackerStage || updated location)
-  // operationType: 'update',
-  // 'updateDescription.updatedFields.currentStatus': { $exists: true }, 
-  //
   let changeStream;
 
   const pipeline = [

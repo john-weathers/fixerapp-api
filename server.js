@@ -7,11 +7,13 @@ const corsOptions = require('./config/corsOptions');
 const allowedOrigins = require('./config/allowedOrigins');
 const { logger, logEvents } = require('./middleware/logEvents');
 const errorHandler = require('./middleware/errorHandler');
-const verifyJWT = require('./middleware/verifyFixerJWT');
 const cookieParser = require('cookie-parser');
 const credentials = require('./middleware/credentials');
 const mongoose = require('mongoose');
 const connectDB = require('./config/dbConn');
+const socketHandlerUser = require('./io/socketHandlerUser');
+const socketHandlerFixer = require('./io/socketHandlerFixer');
+const watcher = require('./io/watcher');
 const server = http.createServer(app);
 const { Server } = require('socket.io');
 const PORT = process.env.PORT || 8500;
@@ -68,9 +70,12 @@ app.all('*', (req, res, next) => {
 
 app.use(errorHandler);
 
-mongoose.connection.once('open', () => {
+mongoose.connection.once('open', async () => {
     console.log('Connected to MongoDB');
-    app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+    socketHandlerUser(userNsp);
+    socketHandlerFixer(fixerNsp);
+    await watcher(userNsp, fixerNsp, null);
+    server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 })
 
 

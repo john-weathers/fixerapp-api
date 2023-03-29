@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Request = require('../models/Request');
 const mongoose = require('mongoose');
 
-const userSocketHandler = nsp => {
+const socketHandlerUser = nsp => {
   nsp.use((socket, next) => {
     const authHeader = socket.handshake.headers['authorization'];
     if (!authHeader) return next(new Error('Authorization header required'));
@@ -119,4 +119,4 @@ const userSocketHandler = nsp => {
   })
 }
 
-module.exports = userSocketHandler;
+module.exports = socketHandlerUser;

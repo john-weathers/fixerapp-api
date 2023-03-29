@@ -5,7 +5,7 @@ const Fixer = require('../models/Fixer');
 const Request = require('../models/Request');
 const mongoose = require('mongoose');
 
-const fixerSocketHandler = nsp => {
+const socketHandlerFixer = nsp => {
   nsp.use((socket, next) => {
     const authHeader = socket.handshake.headers['authorization'];
     if (!authHeader) return next(new Error('Authorization header required'));
@@ -93,4 +93,4 @@ const fixerSocketHandler = nsp => {
   })
 }
 
-module.exports = fixerSocketHandler;
+module.exports = socketHandlerFixer;
