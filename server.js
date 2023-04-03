@@ -29,10 +29,6 @@ const io = new Server(server, {
 const userNsp = io.of('/user');
 const fixerNsp = io.of('/fixer');
 
-// TODO NEXT: need to add socket handlers and watcher (passing in relevant variables), update app.listen to server.listen
-// I think anywhere below database connection should be fine for the handlers/watcher
-// need to double check/research positioning for all of the above
-
 // connect to MongoDB
 connectDB();
 

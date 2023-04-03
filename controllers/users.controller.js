@@ -5,6 +5,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 
+const COOKIE_AGE = 24 * 60 * 60 * 1000;
+
 // TODO: need to update all previous location properties for Request queries and any fixer location properties (which will now live on Request model)
 
 // revisit sameSite cookie settings
@@ -67,11 +69,11 @@ const handleLogin = async (req, res) => {
             {
                 'userInfo': {
                     'email': foundUser.email,
-                    roles,
+                    'roles': roles,
                 },
             },
             process.env.USER_ACCESS_TOKEN_SECRET,
-            { expiresIn: '15s' }
+            { expiresIn: '10s' }
         );
         const newRefreshToken = jwt.sign(
             { 'email': foundUser.email },
@@ -102,19 +104,19 @@ const handleLogin = async (req, res) => {
                 newRefreshTokenArray = [];
             }
 
-            res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true }); // TODO: revisit options
+            res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE }); // TODO: revisit options
         }
 
         // Saving refreshToken with current user
+        
         foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
         const result = await foundUser.save();
-        console.log(result);
 
         // Creates Secure Cookie with refresh token
-        res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
+        res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
 
         // Send authorization roles and access token to user
-        res.json({ accessToken });
+        res.status(200).send({ accessToken });
 
     } else {
         res.sendStatus(401);
@@ -122,10 +124,11 @@ const handleLogin = async (req, res) => {
 }
 
 const handleRefreshToken = async (req, res) => {
+    console.log('handling refresh');
     const cookies = req.cookies;
     if (!cookies?.jwtUser) return res.sendStatus(401);
     const refreshToken = cookies.jwtUser;
-    res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true });
+    res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
 
     const foundUser = await User.findOne({ refreshToken }).exec();
 
@@ -140,7 +143,6 @@ const handleRefreshToken = async (req, res) => {
                 const hackedUser = await User.findOne({ email: decoded.email }).exec();
                 hackedUser.refreshToken = [];
                 const result = await hackedUser.save();
-                console.log(result);
             }
         )
         return res.sendStatus(403); // Forbidden
@@ -167,27 +169,26 @@ const handleRefreshToken = async (req, res) => {
                 {
                     'userInfo': {
                         'email': decoded.email,
-                        roles,
+                        'roles': roles,
                     },
                 },
                 process.env.USER_ACCESS_TOKEN_SECRET,
-                { expiresIn: '15s' }
+                { expiresIn: '10s' }
             );
 
             const newRefreshToken = jwt.sign(
-                { "email": foundUser.email },
+                { 'email': foundUser.email },
                 process.env.USER_REFRESH_TOKEN_SECRET,
                 { expiresIn: '30s' }
             );
             // Saving refreshToken with current user
             foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
-            const result = await foundUser.save();
-            console.log(result);
+            await foundUser.save();
 
             // Creates Secure Cookie with refresh token
-            res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
+            res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
 
-            res.json({ accessToken })
+            res.status(200).send({ accessToken });
         }
     );
 }
@@ -202,7 +203,7 @@ const handleLogout = async (req, res) => {
     // refresh token in db?
     const foundUser = await User.findOne({ refreshToken }).exec();
     if (!foundUser) {
-        res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true }); // revisit clearCookie options
+        res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE }); // revisit clearCookie options
         return res.sendStatus(204);
     }
 
@@ -211,7 +212,7 @@ const handleLogout = async (req, res) => {
     const result = await foundUser.save();
     console.log(result);
 
-    res.clearCookie('jwtUser', { httpOnly: true, sameSite: 'None', secure: true });
+    res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
     res.sendStatus(204);
 }
 
@@ -219,7 +220,7 @@ const handleLogout = async (req, res) => {
 const handleGetProfile = async (req, res, next) => {
     try {
         const profile = await User.findOne({ email: req.email }).exec();
-        if (!profile) return res.redirect('/user/logout');
+        if (!profile) return res.sendStatus(401);
 
         const profileData = {
             email: profile.email,
@@ -314,7 +315,7 @@ const currentRequest = async (req, res, next) => {
     try {
         const profile = await User.findOne({ email: req.email }).exec();
         // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here
-        if (!profile) return res.redirect('/user/logout'); 
+        if (!profile) return res.sendStatus(401);
         if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
 
         const activeJob = await Request.findOne({ user: profile._id, currentStatus: 'in progress' })
@@ -345,7 +346,7 @@ const currentRequest = async (req, res, next) => {
 const cancelRequest = async (req, res, next) => {
     const profile = await User.findOne({ email: req.email }).exec();
     // perhaps should res.sendStatus(401) if !profile? ...redirect to logout might not be ideal design pattern here
-    if (!profile) return res.redirect('/user/logout'); 
+    if (!profile) return res.sendStatus(401);
     if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
 
     const response = await Request.deleteOne({ user: profile._id, active: true });
@@ -406,4 +407,5 @@ module.exports = {
     cancelRequest,
     handleQuoteDecision,
     handleRating,
+    cookieTest,
 }

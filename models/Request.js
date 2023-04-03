@@ -1,21 +1,15 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
-// look into transforming populated documents, if needed
-
-// a more robust matching system (in terms of matching appropriately skilled technicians) would require some type of categorization
-// as well as perhaps notes/images of the issue in need of repair
-
 const requestSchema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     userAddress: String,
     userLocation: {
-        type: {
-            type: String,
-            enum: ['Point'],
-        },
-        coordinates: [Number],
-        required: true,
+      type: {
+          type: String,
+          enum: ['Point'],
+      },
+      coordinates: [Number],
     },
     fixerLocation: {
       type: {
