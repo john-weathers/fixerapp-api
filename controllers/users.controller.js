@@ -110,6 +110,7 @@ const handleLogin = async (req, res) => {
         // Saving refreshToken with current user
         
         foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
+        foundUser.prevTokens.refreshTokens = [];
         const result = await foundUser.save();
 
         // Creates Secure Cookie with refresh token
@@ -128,70 +129,124 @@ const handleRefreshToken = async (req, res) => {
     const cookies = req.cookies;
     if (!cookies?.jwtUser) return res.sendStatus(401);
     const refreshToken = cookies.jwtUser;
-    res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
-
-    const foundUser = await User.findOne({ refreshToken }).exec();
-
-    // Detected refresh token reuse!
-    if (!foundUser) {
+    
+  
+    try {
+        const foundUser = await User.findOne({ refreshToken }).exec();
+        // To handle useEffect development behavior
+        // Better than removing strict mode for the remainder of development in my opinion
+        // In production would keep else block behavior in case of !foundUser
+        // could use tweaking, not perfect yet, but good enough for development purposes going forward in my opinion
+        if (!foundUser) {
+            try {
+                const refreshCheck = await User.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
+                console.log(refreshCheck);
+                if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
+                    jwt.verify(
+                        refreshToken,
+                        process.env.USER_REFRESH_TOKEN_SECRET,
+                        async (err, decoded) => {
+                            if (err) {
+                                console.log('expired refresh token on double refresh')
+                                return res.sendStatus(403);
+                            }
+                            const prevTokenDetails = {
+                                accessToken: refreshCheck.prevTokens.accessToken
+                            }
+                            const prevArr = refreshCheck.prevTokens.refreshTokens;
+                            const refreshArrLength = prevArr.length;
+                            if (refreshArrLength > 10) {
+                                refreshCheck.prevTokens.refreshTokens.pop(); // instead of popping cut to ten
+                                await refreshCheck.save();
+                            }
+                            console.log(`HAVE HEADERS BEEN SENT: ${res.headersSent}`);
+                            return res.send(prevTokenDetails);
+                                
+                        }
+                    );
+                    if (res.headersSent) return;
+                    res.sendStatus(403);
+                } else {
+                    res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+                    jwt.verify(
+                        refreshToken,
+                        process.env.USER_REFRESH_TOKEN_SECRET,
+                        async (err, decoded) => {
+                            if (err) return res.sendStatus(403); // Forbidden
+                            console.log('attempted refresh token reuse!')
+                            const hackedUser = await User.findOne({ email: decoded.email }).exec();
+                            hackedUser.refreshToken = [];
+                            const result = await hackedUser.save();
+                        }
+                    );
+                    if (res.headersSent) return;
+                    res.sendStatus(403);
+                }
+            } catch (err) {
+                console.log(err.message);
+            }
+        }
+        res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+        console.log(foundUser?.refreshToken);
+        console.log(refreshToken);
+        
+        const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
+    
+        // evaluate jwt 
         jwt.verify(
             refreshToken,
             process.env.USER_REFRESH_TOKEN_SECRET,
             async (err, decoded) => {
-                if (err) return res.sendStatus(403); // Forbidden
-                console.log('attempted refresh token reuse!')
-                const hackedUser = await User.findOne({ email: decoded.email }).exec();
-                hackedUser.refreshToken = [];
-                const result = await hackedUser.save();
-            }
-        )
-        return res.sendStatus(403); // Forbidden
-    }
-
-    const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
-
-    // evaluate jwt 
-    jwt.verify(
-        refreshToken,
-        process.env.USER_REFRESH_TOKEN_SECRET,
-        async (err, decoded) => {
-            if (err) {
-                console.log('expired refresh token')
-                foundUser.refreshToken = [...newRefreshTokenArray];
-                const result = await foundUser.save();
-                console.log(result);
-            }
-            if (err || foundUser.email !== decoded.email) return res.sendStatus(403);
-
-            // Refresh token was still valid
-            const roles = Object.values(foundUser.roles);
-            const accessToken = jwt.sign(
-                {
-                    'userInfo': {
-                        'email': decoded.email,
-                        'roles': roles,
+                if (err) {
+                    console.log('expired refresh token')
+                    foundUser.refreshToken = [...newRefreshTokenArray];
+                    const result = await foundUser.save();
+                    console.log(result);
+                }
+                if (err || foundUser.email !== decoded.email) return res.sendStatus(403);
+    
+                // Refresh token was still valid
+                const roles = Object.values(foundUser.roles);
+                const accessToken = jwt.sign(
+                    {
+                        'userInfo': {
+                            'email': decoded.email,
+                            'roles': roles,
+                        },
                     },
-                },
-                process.env.USER_ACCESS_TOKEN_SECRET,
-                { expiresIn: '10s' }
-            );
-
-            const newRefreshToken = jwt.sign(
-                { 'email': foundUser.email },
-                process.env.USER_REFRESH_TOKEN_SECRET,
-                { expiresIn: '30s' }
-            );
-            // Saving refreshToken with current user
-            foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
-            await foundUser.save();
-
-            // Creates Secure Cookie with refresh token
-            res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
-
-            res.status(200).send({ accessToken });
-        }
-    );
-}
+                    process.env.USER_ACCESS_TOKEN_SECRET,
+                    { expiresIn: '10s' }
+                );
+    
+                const newRefreshToken = jwt.sign(
+                    { 'email': foundUser.email },
+                    process.env.USER_REFRESH_TOKEN_SECRET,
+                    { expiresIn: '30s' }
+                );
+                // Saving refreshToken with current user
+                const prevArr = foundUser.prevTokens.refreshTokens;
+                const refreshArrLength = prevArr.length;
+                if (refreshArrLength > 10) {
+                    foundUser.prevTokens.refreshTokens.pop();
+                }
+                foundUser.prevTokens.refreshTokens.unshift(refreshToken);
+                foundUser.prevTokens.accessToken = accessToken;
+                foundUser.prevTokens.lastRefresh = new Date();
+                foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
+                await foundUser.save();
+    
+                // Creates Secure Cookie with refresh token
+                res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+    
+                res.status(200).send({ accessToken });
+            }
+        );
+    } catch (err) {
+        console.log(err.message);
+        res.sendStatus(500);
+    }
+    
+  }
 
 const handleLogout = async (req, res) => {
     // On client, also delete the accessToken
@@ -407,5 +462,4 @@ module.exports = {
     cancelRequest,
     handleQuoteDecision,
     handleRating,
-    cookieTest,
 }

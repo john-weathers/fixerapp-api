@@ -10,7 +10,6 @@ const verifyUserJWT = (req, res, next) => {
         token,
         process.env.USER_ACCESS_TOKEN_SECRET, // create secret key
         (err, decoded) => {
-            if (err) console.log('VERIFY JWT ERROR OCCURING');
             if (err) return res.sendStatus(403); //invalid token
             req.email = decoded.userInfo.email;
             req.roles = decoded.userInfo.roles;

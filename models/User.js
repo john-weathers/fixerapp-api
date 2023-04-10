@@ -63,6 +63,11 @@ const userSchema = new Schema({
         get: getRating,
     },
     refreshToken: [String],
+    prevTokens: {
+        refreshTokens: [String],
+        lastRefresh: Date,
+        accessToken: String,
+    },
     // requests: [{ type: Schema.Types.ObjectId, ref: 'Request' }],
     // proposals: [{ type: Schema.Types.ObjectId, ref: 'Proposal' }],
 });
