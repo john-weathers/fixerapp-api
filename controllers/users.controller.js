@@ -262,10 +262,23 @@ const handleLogout = async (req, res) => {
     console.log(refreshToken);
     const foundUser = await User.findOne({ refreshToken }).exec();
     if (!foundUser) {
+        // trying to mitigate scenario where a refresh fires just before logout
+        // in this case, cookie could be stale and not match the most recently added RT in db
+        try {
+            const refreshCheck = await User.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
+            console.log(refreshCheck);
+            // if the cookie RT matches a previous RT, and a refresh has happened within the last second, we remove the last RT in db
+            if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
+                refreshCheck.refreshToken.pop();
+                await refreshCheck.save();
+            }
+        } catch (err) {
+            console.log(err.message);
+        }
+        // cookie is cleared either way
         res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE }); // revisit clearCookie options
         return res.sendStatus(204);
     }
-
     // Delete refreshToken in db
     foundUser.refreshToken = foundUser.refreshToken.filter(rt => rt !== refreshToken);;
     const result = await foundUser.save();
