@@ -111,7 +111,7 @@ const handleLogin = async (req, res) => {
         
         foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
         foundUser.prevTokens.refreshTokens = [];
-        const result = await foundUser.save();
+        await foundUser.save();
 
         // Creates Secure Cookie with refresh token
         res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
@@ -159,7 +159,7 @@ const handleRefreshToken = async (req, res) => {
                                 refreshCheck.prevTokens.refreshTokens.pop(); // instead of popping cut to ten
                                 await refreshCheck.save();
                             }
-                            console.log(`HAVE HEADERS BEEN SENT: ${res.headersSent}`);
+                            if (res.headersSent) return;
                             return res.send(prevTokenDetails);
                                 
                         }
@@ -186,6 +186,7 @@ const handleRefreshToken = async (req, res) => {
                 console.log(err.message);
             }
         }
+        if (res.headersSent) return;
         res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
         console.log(foundUser?.refreshToken);
         console.log(refreshToken);
@@ -238,11 +239,12 @@ const handleRefreshToken = async (req, res) => {
                 // Creates Secure Cookie with refresh token
                 res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
     
-                res.status(200).send({ accessToken });
+                return res.status(200).send({ accessToken });
             }
         );
     } catch (err) {
         console.log(err.message);
+        if (res.headersSent) return;
         res.sendStatus(500);
     }
     
@@ -252,10 +254,12 @@ const handleLogout = async (req, res) => {
     // On client, also delete the accessToken
 
     const cookies = req.cookies;
+    console.log(cookies);
     if (!cookies?.jwtUser) return res.sendStatus(204); // No content
     const refreshToken = cookies.jwtUser;
 
     // refresh token in db?
+    console.log(refreshToken);
     const foundUser = await User.findOne({ refreshToken }).exec();
     if (!foundUser) {
         res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE }); // revisit clearCookie options

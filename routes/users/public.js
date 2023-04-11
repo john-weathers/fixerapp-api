@@ -10,8 +10,6 @@ const {
 router.post('/register', handleRegistration);
 router.post('/auth', handleLogin);
 router.get('/refresh', handleRefreshToken);
-router.route('/logout')
-  .get(handleLogout)
-  .post(handleLogout);
+router.get('/logout', handleLogout);
 
 module.exports = router;
