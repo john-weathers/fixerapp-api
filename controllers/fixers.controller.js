@@ -75,12 +75,12 @@ const handleLogin = async (req, res) => {
                 },
             },
             process.env.FIXER_ACCESS_TOKEN_SECRET,
-            { expiresIn: '15s' }
+            { expiresIn: '1h' }
         );
         const newRefreshToken = jwt.sign(
             { 'email': foundUser.email },
             process.env.FIXER_REFRESH_TOKEN_SECRET,
-            { expiresIn: '30s' }
+            { expiresIn: '8h' }
         );
         
         let newRefreshTokenArray =
@@ -218,13 +218,13 @@ const handleRefreshToken = async (req, res) => {
                         },
                     },
                     process.env.FIXER_ACCESS_TOKEN_SECRET,
-                    { expiresIn: '10s' }
+                    { expiresIn: '1h' }
                 );
     
                 const newRefreshToken = jwt.sign(
                     { 'email': foundUser.email },
                     process.env.FIXER_REFRESH_TOKEN_SECRET,
-                    { expiresIn: '30s' }
+                    { expiresIn: '8h' }
                 );
                 // Saving refreshToken with current user
                 const prevArr = foundUser.prevTokens.refreshTokens;

@@ -61,6 +61,11 @@ const fixerSchema = new Schema({
         get: getRating,
     },
     refreshToken: [String],
+    prevTokens: {
+        refreshTokens: [String],
+        lastRefresh: Date,
+        accessToken: String,
+    },
     activeJob: { type: Schema.Types.ObjectId, ref: 'Request' },
     // bids: [{ type: Schema.Types.ObjectId, ref: 'Bid' }], think about schedule data as well...might make most sense to use bid
 
