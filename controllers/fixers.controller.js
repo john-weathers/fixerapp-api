@@ -9,10 +9,11 @@ const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
 const directionsService = mbxDirections({ accessToken: MAPBOX_TOKEN });
 const assert = require('assert');
 
-// TODO: need to update all previous location properties for Request queries and any fixer location properties (which will now live on Request model)
+// TODO: add updates to handleRefreshToken and handleLogout from user controller
+// update cookie options
+// make any other fixes that were already made to equivalent user controller functions
 
-// revisit sameSite cookie settings
-// revisit sending roles in login and refresh handlers
+const COOKIE_AGE = 24 * 60 * 60 * 1000;
 
 const handleRegistration = async (req, res) => {
     const {
@@ -83,11 +84,11 @@ const handleLogin = async (req, res) => {
         );
         
         let newRefreshTokenArray =
-            !cookies?.jwtFixer
+            !cookies?.jwt
                 ? foundUser.refreshToken
-                : foundUser.refreshToken.filter(rt => rt !== cookies.jwtFixer);
+                : foundUser.refreshToken.filter(rt => rt !== cookies.jwt);
 
-        if (cookies?.jwtFixer) {
+        if (cookies?.jwt) {
 
             /* 
             Scenario added here: 
@@ -95,7 +96,7 @@ const handleLogin = async (req, res) => {
                 2) RT is stolen
                 3) If 1 & 2, reuse detection is needed to clear all RTs when Fixer logs in
             */
-            const refreshToken = cookies.jwtFixer;
+            const refreshToken = cookies.jwt;
             const foundToken = await Fixer.findOne({ refreshToken }).exec();
 
             // Detected refresh token reuse!
@@ -105,19 +106,18 @@ const handleLogin = async (req, res) => {
                 newRefreshTokenArray = [];
             }
 
-            res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true }); // TODO: revisit options
+            res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // TODO: revisit options
         }
 
         // Saving refreshToken with current Fixer
         foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
-        const result = await foundUser.save();
-        console.log(result);
+        await foundUser.save();
 
         // Creates Secure Cookie with refresh token
-        res.cookie('jwtFixer', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
+        res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
 
         // Send authorization roles and access token to Fixer
-        res.json({ accessToken });
+        res.status(200).send({ accessToken });
 
     } else {
         res.sendStatus(401);
@@ -125,96 +125,170 @@ const handleLogin = async (req, res) => {
 }
 
 const handleRefreshToken = async (req, res) => {
+    console.log('handling refresh');
     const cookies = req.cookies;
-    if (!cookies?.jwtFixer) return res.sendStatus(401);
-    const refreshToken = cookies.jwtFixer;
-    res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true });
-
-    const foundUser = await Fixer.findOne({ refreshToken }).exec();
-
-    // Detected refresh token reuse!
-    if (!foundUser) {
+    if (!cookies?.jwt) return res.sendStatus(401);
+    const refreshToken = cookies.jwt;
+    
+    try {
+        const foundUser = await Fixer.findOne({ refreshToken }).exec();
+        if (!foundUser) {
+            // added to deal with multiple rapid successive calls to handleRefreshToken
+            // likely better long-term fix would be some type of deduplication solution on the front end
+            // could do something like track all refresh requests across all components using the refresh url endpoint (as a string)
+            // would need to be something that utilizes persistent storage (maybe React Redux Store?) since state is inherently unreliable in this situation
+            // catch all refresh requests within a time period before they're sent, essentially like a middleware
+            // maybe setTimeout for each attempted request, gather them together and once final timeout expires fire one request
+            // additional requests become promises with the response from the one request that fired being the resolution (or rejection on error) to all
+            try {
+                const refreshCheck = await Fixer.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
+                console.log(refreshCheck);
+                if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
+                    jwt.verify(
+                        refreshToken,
+                        process.env.FIXER_REFRESH_TOKEN_SECRET,
+                        async (err, decoded) => {
+                            if (err) {
+                                console.log('expired refresh token on double refresh')
+                                return res.sendStatus(403);
+                            }
+                            const prevTokenDetails = {
+                                accessToken: refreshCheck.prevTokens.accessToken
+                            }
+                            const prevArr = refreshCheck.prevTokens.refreshTokens;
+                            const refreshArrLength = prevArr.length;
+                            if (refreshArrLength > 10) {
+                                refreshCheck.prevTokens.refreshTokens.pop(); // instead of popping cut to ten
+                                await refreshCheck.save();
+                            }
+                            if (res.headersSent) return;
+                            return res.send(prevTokenDetails);
+                                
+                        }
+                    );
+                    if (res.headersSent) return;
+                    res.sendStatus(403);
+                } else {
+                    res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
+                    jwt.verify(
+                        refreshToken,
+                        process.env.FIXER_REFRESH_TOKEN_SECRET,
+                        async (err, decoded) => {
+                            if (err) return res.sendStatus(403); // Forbidden
+                            console.log('attempted refresh token reuse!')
+                            const hackedUser = await Fixer.findOne({ email: decoded.email }).exec();
+                            hackedUser.refreshToken = [];
+                            const result = await hackedUser.save();
+                        }
+                    );
+                    if (res.headersSent) return;
+                    res.sendStatus(403);
+                }
+            } catch (err) {
+                console.log(err.message);
+            }
+        }
+        if (res.headersSent) return;
+        res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
+        console.log(foundUser?.refreshToken);
+        console.log(refreshToken);
+        
+        const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
+    
+        // evaluate jwt 
         jwt.verify(
             refreshToken,
             process.env.FIXER_REFRESH_TOKEN_SECRET,
             async (err, decoded) => {
-                if (err) return res.sendStatus(403); // Forbidden
-                console.log('attempted refresh token reuse!')
-                const hackedUser = await Fixer.findOne({ email: decoded.email }).exec();
-                hackedUser.refreshToken = [];
-                const result = await hackedUser.save();
-                console.log(result);
-            }
-        )
-        return res.sendStatus(403); // Forbidden
-    }
-
-    const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
-
-    // evaluate jwt 
-    jwt.verify(
-        refreshToken,
-        process.env.FIXER_REFRESH_TOKEN_SECRET,
-        async (err, decoded) => {
-            if (err) {
-                console.log('expired refresh token')
-                foundUser.refreshToken = [...newRefreshTokenArray];
-                const result = await foundUser.save();
-                console.log(result);
-            }
-            if (err || foundUser.email !== decoded.email) return res.sendStatus(403);
-
-            // Refresh token was still valid
-            const roles = Object.values(foundUser.roles);
-            const accessToken = jwt.sign(
-                {
-                    'userInfo': {
-                        'email': decoded.email,
-                        roles,
+                if (err) {
+                    console.log('expired refresh token')
+                    foundUser.refreshToken = [...newRefreshTokenArray];
+                    const result = await foundUser.save();
+                    console.log(result);
+                }
+                if (err || foundUser.email !== decoded.email) return res.sendStatus(403);
+    
+                // Refresh token was still valid
+                const roles = Object.values(foundUser.roles);
+                const accessToken = jwt.sign(
+                    {
+                        'userInfo': {
+                            'email': decoded.email,
+                            'roles': roles,
+                        },
                     },
-                },
-                process.env.FIXER_ACCESS_TOKEN_SECRET,
-                { expiresIn: '15s' }
-            );
-
-            const newRefreshToken = jwt.sign(
-                { "email": foundUser.email },
-                process.env.FIXER_REFRESH_TOKEN_SECRET,
-                { expiresIn: '30s' }
-            );
-            // Saving refreshToken with current Fixer
-            foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
-            const result = await foundUser.save();
-            console.log(result);
-
-            // Creates Secure Cookie with refresh token
-            res.cookie('jwtFixer', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: 24 * 60 * 60 * 1000 });
-
-            res.json({ accessToken })
-        }
-    );
-}
+                    process.env.FIXER_ACCESS_TOKEN_SECRET,
+                    { expiresIn: '10s' }
+                );
+    
+                const newRefreshToken = jwt.sign(
+                    { 'email': foundUser.email },
+                    process.env.FIXER_REFRESH_TOKEN_SECRET,
+                    { expiresIn: '30s' }
+                );
+                // Saving refreshToken with current user
+                const prevArr = foundUser.prevTokens.refreshTokens;
+                const refreshArrLength = prevArr.length;
+                if (refreshArrLength > 10) {
+                    foundUser.prevTokens.refreshTokens.pop();
+                }
+                foundUser.prevTokens.refreshTokens.unshift(refreshToken);
+                foundUser.prevTokens.accessToken = accessToken;
+                foundUser.prevTokens.lastRefresh = new Date();
+                foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
+                await foundUser.save();
+    
+                // Creates Secure Cookie with refresh token
+                res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
+    
+                return res.status(200).send({ accessToken });
+            }
+        );
+    } catch (err) {
+        console.log(err.message);
+        if (res.headersSent) return;
+        res.sendStatus(500);
+    }
+    
+  }
 
 const handleLogout = async (req, res) => {
     // On client, also delete the accessToken
-    
+
     const cookies = req.cookies;
-    if (!cookies?.jwtFixer) return res.sendStatus(204); // No content
-    const refreshToken = cookies.jwtFixer;
+    console.log(cookies);
+    if (!cookies?.jwt) return res.sendStatus(204); // No content
+    const refreshToken = cookies.jwt;
 
     // refresh token in db?
+    console.log(refreshToken);
     const foundUser = await Fixer.findOne({ refreshToken }).exec();
     if (!foundUser) {
-        res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true }); // revisit clearCookie options
+        // trying to mitigate scenario where a refresh fires just before logout
+        // in this case, cookie could be stale and not match the most recently added RT in db
+        try {
+            const refreshCheck = await Fixer.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
+            console.log(refreshCheck);
+            // if the cookie RT matches a previous RT, and a refresh has happened within the last second, we remove the last RT in db
+            if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
+                refreshCheck.refreshToken.pop();
+                refreshCheck.prevTokens.refreshTokens = [];
+                await refreshCheck.save();
+            }
+        } catch (err) {
+            console.log(err.message);
+        }
+        // cookie is cleared either way
+        res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // revisit clearCookie options
         return res.sendStatus(204);
     }
-
     // Delete refreshToken in db
     foundUser.refreshToken = foundUser.refreshToken.filter(rt => rt !== refreshToken);;
+    foundUser.prevTokens.refreshTokens = [];
     const result = await foundUser.save();
     console.log(result);
 
-    res.clearCookie('jwtFixer', { httpOnly: true, sameSite: 'None', secure: true });
+    res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
     res.sendStatus(204);
 }
 

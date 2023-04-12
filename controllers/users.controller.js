@@ -82,11 +82,11 @@ const handleLogin = async (req, res) => {
         );
         
         let newRefreshTokenArray =
-            !cookies?.jwtUser
+            !cookies?.jwt
                 ? foundUser.refreshToken
-                : foundUser.refreshToken.filter(rt => rt !== cookies.jwtUser);
+                : foundUser.refreshToken.filter(rt => rt !== cookies.jwt);
 
-        if (cookies?.jwtUser) {
+        if (cookies?.jwt) {
 
             /* 
             Scenario added here: 
@@ -94,7 +94,7 @@ const handleLogin = async (req, res) => {
                 2) RT is stolen
                 3) If 1 & 2, reuse detection is needed to clear all RTs when user logs in
             */
-            const refreshToken = cookies.jwtUser;
+            const refreshToken = cookies.jwt;
             const foundToken = await User.findOne({ refreshToken }).exec();
 
             // Detected refresh token reuse!
@@ -104,7 +104,7 @@ const handleLogin = async (req, res) => {
                 newRefreshTokenArray = [];
             }
 
-            res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE }); // TODO: revisit options
+            res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // TODO: revisit options
         }
 
         // Saving refreshToken with current user
@@ -114,7 +114,7 @@ const handleLogin = async (req, res) => {
         await foundUser.save();
 
         // Creates Secure Cookie with refresh token
-        res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+        res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
 
         // Send authorization roles and access token to user
         res.status(200).send({ accessToken });
@@ -127,17 +127,19 @@ const handleLogin = async (req, res) => {
 const handleRefreshToken = async (req, res) => {
     console.log('handling refresh');
     const cookies = req.cookies;
-    if (!cookies?.jwtUser) return res.sendStatus(401);
-    const refreshToken = cookies.jwtUser;
+    if (!cookies?.jwt) return res.sendStatus(401);
+    const refreshToken = cookies.jwt;
     
-  
     try {
         const foundUser = await User.findOne({ refreshToken }).exec();
-        // To handle useEffect development behavior
-        // Better than removing strict mode for the remainder of development in my opinion
-        // In production would keep else block behavior in case of !foundUser
-        // could use tweaking, not perfect yet, but good enough for development purposes going forward in my opinion
         if (!foundUser) {
+            // added to deal with multiple rapid successive calls to handleRefreshToken
+            // likely better long-term fix would be some type of deduplication solution on the front end
+            // could do something like track all refresh requests across all components using the refresh url endpoint (as a string)
+            // would need to be something that utilizes persistent storage (maybe React Redux Store?) since state is inherently unreliable in this situation
+            // catch all refresh requests within a time period before they're sent, essentially like a middleware
+            // maybe setTimeout for each attempted request, gather them together and once final timeout expires fire one request
+            // additional requests become promises with the response from the one request that fired being the resolution (or rejection on error) to all
             try {
                 const refreshCheck = await User.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
                 console.log(refreshCheck);
@@ -167,7 +169,7 @@ const handleRefreshToken = async (req, res) => {
                     if (res.headersSent) return;
                     res.sendStatus(403);
                 } else {
-                    res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+                    res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
                     jwt.verify(
                         refreshToken,
                         process.env.USER_REFRESH_TOKEN_SECRET,
@@ -187,7 +189,7 @@ const handleRefreshToken = async (req, res) => {
             }
         }
         if (res.headersSent) return;
-        res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+        res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
         console.log(foundUser?.refreshToken);
         console.log(refreshToken);
         
@@ -237,7 +239,7 @@ const handleRefreshToken = async (req, res) => {
                 await foundUser.save();
     
                 // Creates Secure Cookie with refresh token
-                res.cookie('jwtUser', newRefreshToken, { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+                res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
     
                 return res.status(200).send({ accessToken });
             }
@@ -255,8 +257,8 @@ const handleLogout = async (req, res) => {
 
     const cookies = req.cookies;
     console.log(cookies);
-    if (!cookies?.jwtUser) return res.sendStatus(204); // No content
-    const refreshToken = cookies.jwtUser;
+    if (!cookies?.jwt) return res.sendStatus(204); // No content
+    const refreshToken = cookies.jwt;
 
     // refresh token in db?
     console.log(refreshToken);
@@ -270,21 +272,23 @@ const handleLogout = async (req, res) => {
             // if the cookie RT matches a previous RT, and a refresh has happened within the last second, we remove the last RT in db
             if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
                 refreshCheck.refreshToken.pop();
+                refreshCheck.prevTokens.refreshTokens = [];
                 await refreshCheck.save();
             }
         } catch (err) {
             console.log(err.message);
         }
         // cookie is cleared either way
-        res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE }); // revisit clearCookie options
+        res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // revisit clearCookie options
         return res.sendStatus(204);
     }
     // Delete refreshToken in db
     foundUser.refreshToken = foundUser.refreshToken.filter(rt => rt !== refreshToken);;
+    foundUser.prevTokens.refreshTokens = [];
     const result = await foundUser.save();
     console.log(result);
 
-    res.clearCookie('jwtUser', { httpOnly: true, secure: true, sameSite: 'None', maxAge: COOKIE_AGE });
+    res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
     res.sendStatus(204);
 }
 
