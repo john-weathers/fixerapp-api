@@ -47,6 +47,14 @@ const socketHandlerFixer = nsp => {
       }
     });
 
+    socket.on('current job', (data, callback) => {
+      const { jobId } = data;
+      socket.join(String(jobId));
+      callback({
+        status: 'OK',
+      });
+    })
+
     // update fixer location
     socket.on('update location', async (data) => {
       const { location, jobId } = data;

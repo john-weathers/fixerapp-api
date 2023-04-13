@@ -43,7 +43,7 @@ const socketHandlerUser = nsp => {
     socket.on('new request', async (data, callback) => {
       const { location, address } = data;
       try {
-        if (!location.length || !address) throw new Error('Missing location data');
+        if (!location?.length || !address) throw new Error('Missing location data');
         const profile = await User.findOne({ email: socket.email }).exec();
         if (!profile || !mongoose.isObjectIdOrHexString(profile._id)) throw new Error('NOK');
 
@@ -57,6 +57,7 @@ const socketHandlerUser = nsp => {
           userAddress: address,
           requestedAt: new Date(),
         });
+        console.log(newRequest);
         socket.join(String(newRequest._id));
         callback({
           status: 'Created',
@@ -73,7 +74,7 @@ const socketHandlerUser = nsp => {
         }
         
       }
-    })
+    });
 
     socket.on('cancel request', async (callback) => {
       try {
@@ -98,6 +99,14 @@ const socketHandlerUser = nsp => {
         }
 
       }
+    });
+
+    socket.on('current job', (data, callback) => {
+      const { jobId } = data;
+      socket.join(String(jobId));
+      callback({
+        status: 'OK',
+      });
     })
 
     socket.on('cancel job', async (data, callback) => {
