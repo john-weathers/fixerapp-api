@@ -294,7 +294,8 @@ const handleLogout = async (req, res) => {
 
 const handleGetProfile = async (req, res, next) => {
     const profile = await Fixer.findOne({ email: req.email }).exec();
-    if (!profile) return res.redirect('/fixer/logout');
+    // redirect to logout if !profile?
+    if (!profile) return res.sendStatus(401);
 
     const profileData = {
         email: profile.email,
@@ -338,15 +339,17 @@ const currentWork = async (req, res, next) => {
 
 const findWork = async (req, res, next) => {
     const { location } = req.body;
-    if (!location.length) return res.sendStatus(400);
+    if (!location?.length) return res.sendStatus(400);
     const geojsonPoint = { type: 'Point', coordinates: location } 
 
     const profile = await Fixer.findOne({ email: req.email }).exec();
-    if (!profile) return res.redirect('/fixer/logout');
+    if (!profile) return res.sendStatus(401);
     if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
 
+    console.log(location);
+
     try {
-        const activeRequests = Request.aggregate([
+        const activeRequests = await Request.aggregate([
             {
                 $geoNear: {
                     near: geojsonPoint,
@@ -361,6 +364,8 @@ const findWork = async (req, res, next) => {
             { $sort: { requestedAt: 1 } }, // older (non-stale) requests should be satisfied first
             { $limit: 10 }, // only one request will be matched, so we can limit to a pool of eligible candidates (adjust number if needed).
         ]);
+
+        if (!activeRequests) return res.sendStatus(404);
         // loop through multiple candidates in the event that a request was matched after aggregation and before updateOne (thinking about a scenario with many requests in a busy area)
         // NOTE: consider making this a transaction to ensure data is consistent between multiple related operations
         for await (const activeRequest of activeRequests) {
