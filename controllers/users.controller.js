@@ -286,7 +286,6 @@ const handleLogout = async (req, res) => {
     foundUser.refreshToken = foundUser.refreshToken.filter(rt => rt !== refreshToken);;
     foundUser.prevTokens.refreshTokens = [];
     const result = await foundUser.save();
-    console.log(result);
 
     res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
     res.sendStatus(204);
@@ -395,22 +394,29 @@ const currentRequest = async (req, res, next) => {
         if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
 
         const activeJob = await Request.findOne({ user: profile._id, currentStatus: 'in progress' })
-            .populate('fixer', 'name phoneNumber rating currentLocation') // in production it may be best to wait to send currentLocation for privacy reasons
+            .populate('fixer', 'name phoneNumber rating') // in production it may be best to wait to send currentLocation for privacy reasons
             .exec();
+
         if (!activeJob) return res.sendStatus(404);
+        
+        const fixer = activeJob.fixer.toObject();
+        const quote = activeJob.get('quote');
+
         const jobDetails = {
             jobId: activeJob._id,
-            userLocation: activeJob.location.coordinates,
+            userLocation: activeJob.userLocation.coordinates,
             userAddress: activeJob.userAddress,
-            fixerLocation: activeJob.fixer.currentLocation.coordinates,
+            fixerLocation: activeJob.fixerLocation.coordinates,
             currentStatus: activeJob.currentStatus,
             assignedAt: activeJob.assignedAt,
             trackerStage: activeJob.trackerStage,
             fixerName: activeJob.fixer.name.first,
-            fixerRating: activeJob.fixer?.rating,
+            fixerRating: fixer?.rating,
             phoneNumber: activeJob.fixer.phoneNumber,
-            eta: activeJob.eta, // will be in seconds, conversions can happen on f/e
+            eta: activeJob.eta,
+            quote,
         }
+
         res.status(200).send(jobDetails);
     } catch (err) {
         res.status(500).send(err.message);
@@ -458,15 +464,26 @@ const handleQuoteDecision = async (req, res, next) => {
 
 const handleRating = async (req, res, next) => {
     const { jobId, rating } = req.body;
-    if (!rating || rating < 1 || rating > 5) res.sendStatus(400);
+    if (!rating || !jobId || rating < 1 || rating > 5) return res.sendStatus(400);
 
     try {
         const { fixer } = await Request.findOne({ _id: jobId }).exec();
-        if (!fixer) res.sendStatus(404);
+        if (!fixer) return res.sendStatus(404);
 
-        const response = await Fixer.updateOne({ _id: jobId }, { $push: { ratings: rating } });
-        if (!response.modifiedCount) res.sendStatus(404);
-        res.sendStatus(200);
+        const fixerRatings = await Fixer.findOneAndUpdate(
+            { _id: fixer }, 
+            { $push: { ratings: rating } }, 
+            { new: true }
+        )
+            .select('ratings');
+        if (fixerRatings?.ratings?.length) {
+            const rating = fixerRatings.ratings.reduce((a, cv) => a + cv) / fixerRatings.ratings.length;
+            fixerRatings.rating = Number(rating.toFixed(2));
+            await fixerRatings.save();
+            res.sendStatus(200);
+        } else {
+            res.sendStatus(404);
+        }
     } catch (err) {
         res.sendStatus(500);
     }

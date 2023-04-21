@@ -67,6 +67,6 @@ const requestSchema = new Schema({
     fixer: { type: Schema.Types.ObjectId, ref: 'Fixer' }, // can populate specific fields here...(name, phoneNumber, currentLocation, rating?)
 });
 
-requestSchema.index({ location: '2dsphere' });
+requestSchema.index({ userLocation: '2dsphere' });
 
 module.exports = mongoose.model('Request', requestSchema);

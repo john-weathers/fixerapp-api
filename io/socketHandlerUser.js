@@ -53,7 +53,7 @@ const socketHandlerUser = nsp => {
         const newRequest = await Request.create({
           user: profile._id,
           active: true,
-          location: { type: 'Point', coordinates: location },
+          userLocation: { type: 'Point', coordinates: location },
           userAddress: address,
           requestedAt: new Date(),
         });
@@ -104,10 +104,17 @@ const socketHandlerUser = nsp => {
     socket.on('current job', (data, callback) => {
       const { jobId } = data;
       socket.join(String(jobId));
+      console.log(`joined room with ${jobId}`);
       callback({
         status: 'OK',
       });
-    })
+    });
+
+    socket.on('leave room', (data) => {
+      const { jobId } = data;
+      socket.leave(String(jobId));
+      console.log(`left room with: ${jobId}`);
+    });
 
     socket.on('cancel job', async (data, callback) => {
       const { jobId } = data;

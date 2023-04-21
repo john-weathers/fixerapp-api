@@ -12,14 +12,6 @@ const nameSchema = new Schema({
     },
 });
 
-function getRating() {
-    if (this.ratings.length) {
-        return this.ratings.reduce((a, cv) => a + cv) / this.ratings.length;
-    } else {
-        return null;
-    }
-}
-
 // consider adding profile photos
 
 const userSchema = new Schema({
@@ -58,10 +50,7 @@ const userSchema = new Schema({
     },
     defaultAddress: String,
     ratings: [Number],
-    rating: {
-        type: Number,
-        get: getRating,
-    },
+    rating: Number,
     refreshToken: [String],
     prevTokens: {
         refreshTokens: [String],

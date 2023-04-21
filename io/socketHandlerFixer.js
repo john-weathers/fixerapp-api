@@ -50,6 +50,7 @@ const socketHandlerFixer = nsp => {
     socket.on('current job', (data, callback) => {
       const { jobId } = data;
       socket.join(String(jobId));
+      console.log(`joined room with ${jobId}`);
       callback({
         status: 'OK',
       });
@@ -58,6 +59,7 @@ const socketHandlerFixer = nsp => {
     // update fixer location
     socket.on('update location', async (data) => {
       const { location, jobId } = data;
+      console.log(`updating location. jobId: ${jobId}, location: ${location}`);
       const geojsonPoint = {
         type: 'Point',
         coordinates: location,
@@ -72,14 +74,23 @@ const socketHandlerFixer = nsp => {
     socket.on('arriving', async (jobId, callback) => {
       try {
         const response = await Request.updateOne({ _id: jobId }, { trackerStage: 'arriving' });
-        if (response.modifiedCount) callback({
-          status: 'OK',
-        });
+        if (response.modifiedCount) {
+          console.log('arriving');
+          callback({
+            status: 'OK',
+          });
+        }
       } catch (err) {
         callback({
           status: 'NOK',
         })
       }
+    });
+
+    socket.on('leave room', (data) => {
+      const { jobId } = data;
+      socket.leave(String(jobId));
+      console.log(`left room with: ${jobId}`);
     });
 
     socket.on('cancel job', async (data, callback) => {

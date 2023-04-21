@@ -1,6 +1,8 @@
 const ResumeToken = require('../models/ResumeToken');
 
-const errListener = async (userNsp, fixerNsp, stream, token, err) => {
+// set backoff timeout to avoid quasi-infinite loop if there's an error state?
+// don't think this needs to be async since only async callbacks access the db
+const errListener = async (userNsp, fixerNsp, stream, token, watcher, err) => {
   stream.on('error', async () => {
     err.state = true;
     try {
@@ -23,7 +25,7 @@ const errListener = async (userNsp, fixerNsp, stream, token, err) => {
       }
       stream.close() // not sure if this will work or if it's necessary, but including to be safe
     } catch (err) {
-      console.log(err.message);
+      console.error(err);
     }
   });
 }

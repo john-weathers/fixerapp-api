@@ -46,8 +46,6 @@ const handleRegistration = async (req, res) => {
             phoneNumber,
         });
 
-        console.log(result);
-
         res.status(201).json({ 'success': `New fixer at ${email} created!` });
     } catch (err) {
         res.status(500).json({ 'message': err.message });
@@ -56,7 +54,6 @@ const handleRegistration = async (req, res) => {
 
 const handleLogin = async (req, res) => {
     const cookies = req.cookies;
-    console.log(`cookie available at login: ${JSON.stringify(cookies)}`);
     const { email, pwd } = req.body;
     if (!email || !pwd) return res.status(400).json({ 'message': 'Email and password are required for login.' });
 
@@ -142,7 +139,6 @@ const handleRefreshToken = async (req, res) => {
             // additional requests become promises with the response from the one request that fired being the resolution (or rejection on error) to all
             try {
                 const refreshCheck = await Fixer.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
-                console.log(refreshCheck);
                 if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
                     jwt.verify(
                         refreshToken,
@@ -190,8 +186,6 @@ const handleRefreshToken = async (req, res) => {
         }
         if (res.headersSent) return;
         res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
-        console.log(foundUser?.refreshToken);
-        console.log(refreshToken);
         
         const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
     
@@ -268,7 +262,6 @@ const handleLogout = async (req, res) => {
         // in this case, cookie could be stale and not match the most recently added RT in db
         try {
             const refreshCheck = await Fixer.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
-            console.log(refreshCheck);
             // if the cookie RT matches a previous RT, and a refresh has happened within the last second, we remove the last RT in db
             if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
                 refreshCheck.refreshToken.pop();
@@ -286,7 +279,6 @@ const handleLogout = async (req, res) => {
     foundUser.refreshToken = foundUser.refreshToken.filter(rt => rt !== refreshToken);;
     foundUser.prevTokens.refreshTokens = [];
     const result = await foundUser.save();
-    console.log(result);
 
     res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
     res.sendStatus(204);
@@ -311,17 +303,34 @@ const handleGetProfile = async (req, res, next) => {
 
 const currentWork = async (req, res, next) => {
     try {
-        const { activeJob } = await Fixer.findOne({ email: req.email })
+        /*const { activeJob } = await Fixer.findOne({ email: req.email })
             .select('activeJob')
             .populate({
                 path: 'activeJob',
-                select: 'user location currentStatus trackerStage',
+                select: 'user userLocation userAddress fixerLocation currentStatus assignedAt trackerStage route eta',
                 populate: { path: 'user', select: 'name phoneNumber' },
             })
             .exec();
-        if (activeJob?.currentStatus !== 'in progress') return res.sendStatus(404);
+
+        if (!activeJob || activeJob?.currentStatus !== 'in progress') return res.sendStatus(404);*/
+
+        const profile = await Fixer.findOne({ email: req.email }).exec();
+        if (!profile) return res.sendStatus(401);
+        if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
+
+        const activeJob = await Request.findOne({ fixer: profile._id, currentStatus: 'in progress' })
+            .populate('user', 'name phoneNumber')
+            .exec();
+
+        if (!activeJob) return res.sendStatus(404);
+
+        const quote = activeJob.get('quote');
+        const workStartedAt = activeJob.get('workStartedAt');
+
         const jobDetails = {
-            userLocation: activeJob.location.coordinates,
+            jobId: activeJob._id,
+            userLocation: activeJob.userLocation.coordinates,
+            fixerLocation: activeJob.fixerLocation.coordinates,
             userAddress: activeJob.userAddress,
             firstName: activeJob.user.name.first,
             lastName: activeJob.user.name.last,
@@ -329,7 +338,10 @@ const currentWork = async (req, res, next) => {
             currentStatus: activeJob.currentStatus,
             trackerStage: activeJob.trackerStage,
             assignedAt: activeJob.assignedAt,
-            route: activeJob.route, 
+            eta: activeJob.eta,
+            route: activeJob.route,
+            quote,
+            workStartedAt, 
         }
         res.status(200).send(jobDetails);
     } catch (err) {
@@ -345,8 +357,6 @@ const findWork = async (req, res, next) => {
     const profile = await Fixer.findOne({ email: req.email }).exec();
     if (!profile) return res.sendStatus(401);
     if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
-
-    console.log(location);
 
     try {
         const activeRequests = await Request.aggregate([
@@ -365,7 +375,9 @@ const findWork = async (req, res, next) => {
             { $limit: 10 }, // only one request will be matched, so we can limit to a pool of eligible candidates (adjust number if needed).
         ]);
 
-        if (!activeRequests) return res.sendStatus(404);
+        // console.log(activeRequests);
+
+        if (!activeRequests?.length) return res.sendStatus(404);
         // loop through multiple candidates in the event that a request was matched after aggregation and before updateOne (thinking about a scenario with many requests in a busy area)
         // NOTE: consider making this a transaction to ensure data is consistent between multiple related operations
         for await (const activeRequest of activeRequests) {
@@ -379,6 +391,7 @@ const findWork = async (req, res, next) => {
                 )
                     .populate('user', 'name phoneNumber')
                     .exec();
+
                 if (!assignedJob) {
                     await session.abortTransaction();
                     session.endSession();
@@ -411,9 +424,7 @@ const findWork = async (req, res, next) => {
                     assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
                     assignedJob.route.duration = routeObject.duration;
                     const addedTime = (routeObject.duration * 1000) + 180000;
-                    assignedJob.eta = new Date(dateTime.getTime() + addedTime); // NOTE: need to fix this and any other similar calculations with date
-                    // this will not evaluate as expected
-                    // try (e.g.): new Date(dateTime.getTime() + (5 * 60000))
+                    assignedJob.eta = Date.now() + addedTime;
                     await assignedJob.save();
 
                     /*const routeData = {
@@ -444,6 +455,9 @@ const findWork = async (req, res, next) => {
                         route: assignedJob.route,
                         eta: assignedJob.eta, 
                     }
+
+                    console.log(`ETA is ${assignedJob.eta}`);
+
                     return res.status(201).send(jobDetails);
                 }
 
@@ -462,13 +476,14 @@ const findWork = async (req, res, next) => {
 
 const updateDirections = async (req, res, next) => {
     const { jobId, location } = req.body;
+    console.log(`updating directions: ${location}`);
 
     try {
         if (!mongoose.isObjectIdOrHexString(jobId)) return res.sendStatus(500);
-        if (!location.length) return res.sendStatus(400);
+        if (!location?.length) return res.sendStatus(400);
 
         const assignedJob = await Request.findOne({ _id: jobId, currentStatus: 'in progress' }).exec();
-        if (!assignedJob.userLocation.coordinates.length) return res.sendStatus(404);
+        if (!assignedJob?.userLocation?.coordinates?.length) return res.sendStatus(404);
 
         const response = await directionsService.getDirections({
             profile: 'driving-traffic',
@@ -487,13 +502,15 @@ const updateDirections = async (req, res, next) => {
         assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
         assignedJob.route.duration = routeObject.duration;
         const addedTime = (routeObject.duration * 1000) + 120000;
-        assignedJob.eta = new Date(dateTime.getTime() + addedTime)
+        assignedJob.eta = Date.now() + addedTime;
         await assignedJob.save();
 
         const jobDetails = {
             route: assignedJob.route,
             eta: assignedJob.eta,
         }
+
+        console.log(`new direction details: ${jobDetails}`);
         res.status(200).send(jobDetails);
     } catch (err) {
         res.sendStatus(500);
@@ -562,15 +579,26 @@ const handleComplete = async (req, res, next) => {
 
 const handleRating = async (req, res, next) => {
     const { jobId, rating } = req.body;
-    if (!rating || rating < 1 || rating > 5) res.sendStatus(400);
+    if (!rating || !jobId || rating < 1 || rating > 5) return res.sendStatus(400);
 
     try {
         const { user } = await Request.findOne({ _id: jobId }).exec();
-        if (!user) res.sendStatus(404);
+        if (!user) return res.sendStatus(404);
 
-        const response = await User.updateOne({ _id: jobId }, { $push: { ratings: rating } });
-        if (!response.modifiedCount) res.sendStatus(404);
-        res.sendStatus(200);
+        const userRatings = await User.findOneAndUpdate(
+            { _id: user }, 
+            { $push: { ratings: rating } }, 
+            { new: true }
+        )
+            .select('ratings');
+        if (userRatings?.ratings?.length) {
+            const rating = userRatings.ratings.reduce((a, cv) => a + cv) / userRatings.ratings.length;
+            userRatings.rating = Number(rating.toFixed(2));
+            await userRatings.save();
+            res.sendStatus(200);
+        } else {
+            res.sendStatus(404);
+        }
     } catch (err) {
         res.sendStatus(500);
     }
