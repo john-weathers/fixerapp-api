@@ -462,6 +462,26 @@ const handleQuoteDecision = async (req, res, next) => {
     }
 }
 
+const handleRevisedQuote = async (req, res, next) => {
+    const { accept, jobId } = req.body;
+    try {
+        const request = await Request.findOne({ _id: jobId }).exec();
+        if (!request) return res.sendStatus(404);
+
+        if (accept) {
+            request.quote.revisedAccepted = true;
+        } else {
+            request.quote.revisedAccepted = false;
+        }
+        request.quote.revisedPending = false;
+
+        await request.save();
+        res.sendStatus(200);
+    } catch (err) {
+        res.sendStatus(500);
+    }
+}
+
 const handleRating = async (req, res, next) => {
     const { jobId, rating } = req.body;
     if (!rating || !jobId || rating < 1 || rating > 5) return res.sendStatus(400);
@@ -499,5 +519,6 @@ module.exports = {
     currentRequest,
     cancelRequest,
     handleQuoteDecision,
+    handleRevisedQuote,
     handleRating,
 }

@@ -55,6 +55,8 @@ const requestSchema = new Schema({
       amount: Number,
       details: [String],
       pending: Boolean,
+      revisedPending: Boolean,
+      revisedAccepted: Boolean,
     },
     requestedAt: {
       type: Date,

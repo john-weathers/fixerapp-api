@@ -556,7 +556,7 @@ const handleRevisedCost = async (req, res, next) => {
         const quoteInfo = {
             amount: revisedCost,
             details: [...request?.quote?.details, notes],
-            pending: true,
+            revisedPending: true,
         }
         request.quote = quoteInfo;
         await request.save();
