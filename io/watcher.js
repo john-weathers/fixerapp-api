@@ -1,7 +1,6 @@
 const Request = require('../models/Request');
 const { errListener } = require('./watcherHelpers');
 
-// don't think this needs to be async
 const watcher = async (userNsp, fixerNsp, resumeToken) => {
   let changeStream;
 
