@@ -685,9 +685,10 @@ const handleRevisedCost = async (req, res, next) => {
 }
 
 const handleComplete = async (req, res, next) => {
-    const { jobId } = req.body;
+    const { jobId, jobNotes } = req.body;
     try {
-        const response = await Request.updateOne({ _id: jobId }, { trackerStage: 'complete', currentStatus: 'fulfilled' });
+        if (!jobNotes) return res.sendStatus(400);
+        const response = await Request.updateOne({ _id: jobId }, { trackerStage: 'complete', currentStatus: 'fulfilled', notes: jobNotes });
         if (!response.modifiedCount) return res.sendStatus(404);
         res.sendStatus(200);
     } catch (err) {
