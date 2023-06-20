@@ -51,6 +51,7 @@ const requestSchema = new Schema({
       lastUpdatedAt: Date, // remove?
     },
     eta: Date,
+    notes: String,
     quote: {
       amount: Number,
       details: [String],
