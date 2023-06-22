@@ -56,6 +56,7 @@ const socketHandlerUser = nsp => {
           userLocation: { type: 'Point', coordinates: location },
           userAddress: address,
           requestedAt: new Date(),
+          extendedOptIn: profile.settings.extendedOptIn,
         });
         console.log(newRequest);
         socket.join(String(newRequest._id));

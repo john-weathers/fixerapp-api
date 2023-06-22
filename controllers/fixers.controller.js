@@ -507,7 +507,7 @@ const findWork = async (req, res, next) => {
                 $geoNear: {
                     near: geojsonPoint,
                     distanceField: 'distance',
-                    maxDistance: 32187, // about 20 miles (default unit meters)
+                    maxDistance: profile.settings.extendedOptIn ? 64374 : 32187, // about 40 if opted in, 20 miles if not (default unit meters)
                     query: { 
                         active: true, // filter for active requests only
                         $expr: { $gt: [ '$requestedAt', { $dateSubtract: { startDate: '$$NOW', unit: 'minute', amount: 2 } } ] } // eliminate stale requests
@@ -527,6 +527,12 @@ const findWork = async (req, res, next) => {
             const session = await mongoose.startSession();
             try {
                 session.startTransaction();
+                console.log(activeRequest.distance);
+                if (activeRequest.distance > 32187 && !activeRequest.extendedOptIn) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    continue;
+                }
                 const assignedJob = await Request.findOneAndUpdate(
                     { _id: activeRequest._id, active: true },
                     { active: false, currentStatus: 'in progress', fixerLocation: geojsonPoint, trackerStage: 'en route', assignedAt: new Date(), fixer: profile._id },
