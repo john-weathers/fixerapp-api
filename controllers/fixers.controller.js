@@ -295,6 +295,7 @@ const handleGetProfile = async (req, res, next) => {
         lastName: profile.name.last,
         phoneNumber: profile.phoneNumber,
         rating: profile.rating,
+        settings: profile.settings,
         premium: !!profile.roles.premiumFixer,
     }
 
@@ -303,7 +304,6 @@ const handleGetProfile = async (req, res, next) => {
 
 const handleUpdateProfile = async (req, res, next) => {
     const { updateKey, updateData } = req.body;
-    console.log(updateKey, updateData);
 
     try {
         if (updateKey === 'email') {
@@ -414,6 +414,31 @@ const handleUpdateProfile = async (req, res, next) => {
                 res.sendStatus(401);
             }
         }
+    } catch (err) {
+        res.sendStatus(500);
+    }
+}
+
+const handleUpdateSettings = async (req, res, next) => {
+    const { updateKey } = req.body;
+    if (!updateKey) return res.sendStatus(400);
+
+    try {
+        const foundUser = await Fixer.findOne({ email: req.email }).exec();
+        console.log(foundUser);
+        if (!foundUser) return res.sendStatus(401);
+
+        if (Object.hasOwn(foundUser.settings, updateKey)) {
+            foundUser.settings[updateKey] = !foundUser.settings[updateKey];
+            await foundUser.save();
+            console.log(foundUser.settings);
+    
+            res.sendStatus(200);
+        } else {
+            console.log('key does not exist');
+            res.sendStatus(400);
+        }
+       
     } catch (err) {
         res.sendStatus(500);
     }
@@ -730,6 +755,7 @@ module.exports = {
     handleLogout,
     handleGetProfile,
     handleUpdateProfile,
+    handleUpdateSettings,
     currentWork,
     findWork,
     updateDirections,
