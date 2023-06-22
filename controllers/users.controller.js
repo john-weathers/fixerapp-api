@@ -303,11 +303,154 @@ const handleGetProfile = async (req, res, next) => {
             lastName: profile.name.last,
             phoneNumber: profile.phoneNumber,
             rating: profile.rating,
+            settings: profile.settings,
             premium: !!profile.roles.premiumUser,
         }
         res.send(profileData);
     } catch (err) {
         res.status(500).send(err.message);
+    }
+}
+
+const handleUpdateProfile = async (req, res, next) => {
+    const { updateKey, updateData } = req.body;
+
+    try {
+        if (updateKey === 'email') {
+            const newEmail = updateData?.updateData;
+            const pwd = updateData?.pwd;
+            const cookies = req.cookies;
+
+            if (!newEmail || !pwd) return res.sendStatus(400);
+
+            const foundUser = await User.findOne({ email: req.email }).exec();
+            if (!foundUser) return res.sendStatus(401);
+
+            const match = await bcrypt.compare(pwd, foundUser.password);
+            if (match) {
+                const roles = Object.values(foundUser.roles).filter(Boolean);
+                foundUser.email = newEmail;
+                await foundUser.save();
+                // create JWTs
+                const accessToken = jwt.sign(
+                    {
+                        'userInfo': {
+                            'email': foundUser.email,
+                            roles,
+                        },
+                    },
+                    process.env.USER_ACCESS_TOKEN_SECRET,
+                    { expiresIn: '1h' }
+                );
+                const newRefreshToken = jwt.sign(
+                    { 'email': foundUser.email },
+                    process.env.USER_REFRESH_TOKEN_SECRET,
+                    { expiresIn: '8h' }
+                );
+                
+                let newRefreshTokenArray =
+                    !cookies?.jwt
+                        ? foundUser.refreshToken
+                        : foundUser.refreshToken.filter(rt => rt !== cookies.jwt);
+        
+                if (cookies?.jwt) {
+        
+                    const refreshToken = cookies.jwt;
+                    const foundToken = await User.findOne({ refreshToken }).exec();
+        
+                    // Detected refresh token reuse!
+                    if (!foundToken) {
+                        console.log('attempted refresh token reuse at login!')
+                        // clear out ALL previous refresh tokens
+                        newRefreshTokenArray = [];
+                    }
+        
+                    res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // TODO: revisit options
+                }
+        
+                // Saving refreshToken with current Fixer
+                foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
+                await foundUser.save();
+        
+                // Creates Secure Cookie with refresh token
+                res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
+        
+                // Send authorization roles and access token to Fixer
+                res.status(200).send({ accessToken });
+            
+            } else {
+                res.sendStatus(401);
+            }
+        } else if (updateKey === 'password') {
+            const oldPwd = updateData?.oldPwd;
+            const newPwd = updateData?.newPwd;
+            const PWD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%]).{8,24}$/;
+
+            if (!oldPwd || !newPwd || !PWD_REGEX.test(newPwd)) return res.sendStatus(400);
+
+            const foundUser = await User.findOne({ email: req.email }).exec();
+            if (!foundUser) return res.sendStatus(401);
+
+            const match = await bcrypt.compare(oldPwd, foundUser.password);
+
+            if (match) {
+                const newHashedPassword = await bcrypt.hash(newPwd, 10);
+                foundUser.password = newHashedPassword;
+                await foundUser.save();
+                res.sendStatus(200);
+            } else {
+                res.sendStatus(401);
+            }
+        } else {
+            const change = updateData?.updateData;
+            const pwd = updateData?.pwd;
+
+            if (!change || !pwd) return res.sendStatus(400);
+
+            const foundUser = await User.findOne({ email: req.email }).exec();
+            if (!foundUser) return res.sendStatus(401);
+
+            const match = await bcrypt.compare(pwd, foundUser.password);
+
+            if (match) {
+                if (updateKey === 'phoneNumber') {
+                    foundUser[updateKey] = change;
+                } else {
+                    foundUser.name[updateKey] = change;
+                }
+                await foundUser.save();
+                res.sendStatus(200);
+            } else {
+                res.sendStatus(401);
+            }
+        }
+    } catch (err) {
+        res.sendStatus(500);
+    }
+}
+
+const handleUpdateSettings = async (req, res, next) => {
+    const { updateKey } = req.body;
+    if (!updateKey) return res.sendStatus(400);
+
+    try {
+        const foundUser = await User.findOne({ email: req.email }).exec();
+        console.log(foundUser);
+        if (!foundUser) return res.sendStatus(401);
+
+        if (Object.hasOwn(foundUser.settings, updateKey)) {
+            foundUser.settings[updateKey] = !foundUser.settings[updateKey];
+            await foundUser.save();
+            console.log(foundUser.settings);
+    
+            res.sendStatus(200);
+        } else {
+            console.log('key does not exist');
+            res.sendStatus(400);
+        }
+       
+    } catch (err) {
+        res.sendStatus(500);
     }
 }
 
@@ -515,6 +658,8 @@ module.exports = {
     handleRefreshToken,
     handleLogout,
     handleGetProfile,
+    handleUpdateProfile,
+    handleUpdateSettings,
     fixRequest,
     currentRequest,
     cancelRequest,
