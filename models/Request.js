@@ -18,6 +18,7 @@ const requestSchema = new Schema({
       },
       coordinates: [Number],
     },
+    extendedOptIn: Boolean,
     active: {
       type: Boolean,
       required: true,

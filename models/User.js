@@ -57,6 +57,12 @@ const userSchema = new Schema({
         lastRefresh: Date,
         accessToken: String,
     },
+    settings: {
+        extendedOptIn: {
+            type: Boolean,
+            default: false,
+        },
+    },
     // requests: [{ type: Schema.Types.ObjectId, ref: 'Request' }],
     // proposals: [{ type: Schema.Types.ObjectId, ref: 'Proposal' }],
 });

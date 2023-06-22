@@ -56,6 +56,12 @@ const fixerSchema = new Schema({
         accessToken: String,
     },
     activeJob: { type: Schema.Types.ObjectId, ref: 'Request' },
+    settings: {
+        extendedOptIn: {
+            type: Boolean,
+            default: false,
+        },
+    },
     // bids: [{ type: Schema.Types.ObjectId, ref: 'Bid' }], think about schedule data as well...might make most sense to use bid
 
 });
