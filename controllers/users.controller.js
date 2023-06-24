@@ -25,9 +25,14 @@ const handleRegistration = async (req, res) => {
     if (!PWD_REGEX.test(pwd)) return res.status(400).json({'message': 'Password invalid'});
     if (!email || !pwd || !firstName || !lastName || !phoneNumber) return res.status(400).json({ 'message': 'Required for registration: email, password, first and last name, phone number' });
 
+    const trimmedEmail = email.trim()
     // check for duplicate usernames in the db
-    const duplicateUser = await User.findOne({ email }).exec();
+    const duplicateUser = await User.findOne({ email: trimmedEmail }).exec();
     if (duplicateUser) return res.sendStatus(409); //Conflict 
+
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+    const trimmedPhone = phoneNumber.trim();
 
     try {
         //encrypt the password
@@ -35,18 +40,18 @@ const handleRegistration = async (req, res) => {
         
         //create and store the new user
         const result = await User.create({
-            email,
+            email: trimmedEmail,
             password: hashedPassword,
             name: {
-                first: firstName,
-                last: lastName,
+                first: trimmedFirst,
+                last: trimmedLast,
             },
-            phoneNumber,
+            phoneNumber: trimmedPhone,
         });
 
         console.log(result);
 
-        res.status(201).json({ 'success': `New user at ${email} created!` });
+        res.status(201).json({ 'success': `New user at ${trimmedEmail} created!` });
     } catch (err) {
         res.status(500).json({ 'message': err.message });
     }
