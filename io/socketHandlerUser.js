@@ -12,9 +12,9 @@ const socketHandlerUser = nsp => {
     const token = authHeader.split(' ')[1];
     jwt.verify(
         token,
-        process.env.USER_ACCESS_TOKEN_SECRET, // create secret key
+        process.env.USER_ACCESS_TOKEN_SECRET,
         (err, decoded) => {
-            if (err) return next(new Error('Authentication error')); //invalid token
+            if (err) return next(new Error('Authentication error'));
             socket.email = decoded.userInfo.email;
             socket.roles = decoded.userInfo.roles;
             const rolesArray = [ROLES.user, ROLES.premiumUser];
@@ -26,20 +26,19 @@ const socketHandlerUser = nsp => {
   });
 
   nsp.on('connection', (socket) => {
-    console.log('a user connected');
+    // console.log('a user connected');
 
     socket.on('disconnect', async () => {
-      console.log('a user disconnected');
+      // console.log('a user disconnected');
       try {
         // clean up any pending requests
         const profile = await User.findOne({ email: socket.email }).exec();
         await Request.deleteOne({ user: profile._id, active: true });
       } catch (err) {
-        console.log(err.message);
+        // console.log(err.message);
       }
     });
 
-    // subscribe to handler for new requests
     socket.on('new request', async (data, callback) => {
       const { location, address } = data;
       try {
@@ -58,7 +57,6 @@ const socketHandlerUser = nsp => {
           requestedAt: new Date(),
           extendedOptIn: profile.settings.extendedOptIn,
         });
-        console.log(newRequest);
         socket.join(String(newRequest._id));
         callback({
           status: 'Created',
@@ -105,7 +103,6 @@ const socketHandlerUser = nsp => {
     socket.on('current job', (data, callback) => {
       const { jobId } = data;
       socket.join(String(jobId));
-      console.log(`joined room with ${jobId}`);
       callback({
         status: 'OK',
       });
@@ -114,7 +111,6 @@ const socketHandlerUser = nsp => {
     socket.on('leave room', (data) => {
       const { jobId } = data;
       socket.leave(String(jobId));
-      console.log(`left room with: ${jobId}`);
     });
 
     socket.on('cancel job', async (data, callback) => {

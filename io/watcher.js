@@ -1,8 +1,22 @@
 const Request = require('../models/Request');
 const { errListener } = require('./watcherHelpers');
 
-const watcher = async (userNsp, fixerNsp, resumeToken) => {
+const timeout = (attemptNumber) => {
+  return new Promise((res, rej) => {
+    setTimeout(() => {
+      res('timeout over');
+    }, attemptNumber * 3000)
+  })
+}
+
+const watcher = async (userNsp, fixerNsp, resumeToken, retryNumber) => {
   let changeStream;
+  if (retryNumber) {
+    await timeout(retryNumber);
+    retryNumber += 1;
+  } else {
+    retryNumber = 1;
+  }
 
   const pipeline = [
     {
@@ -12,21 +26,6 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
     }
   ]
 
-  /*const pipeline = [
-    {
-      $match: {
-        $and: [
-          { operationType: 'update' },
-          { $or: [
-            { 'updateDescription.updatedFields.currentStatus': { $exists: true } }, // think about simplifying and sending on all updates
-            { 'updateDescription.updatedFields.trackerStage': { $exists: true } }, // becuase it might not make a difference
-            { 'updateDescription.updatedFields.fixerLocation': { $exists: true } },
-            { 'updateDescription.updatedFields.eta': { $exists: true } },
-          ] }
-        ]
-      }
-    }
-  ];*/
   const err = {
     state: false,
   }
@@ -35,9 +34,7 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
   if (!resumeToken) {
     changeStream = Request.watch(pipeline, { fullDocument: 'updateLookup' }).on('change', change => {
       resumeToken = change._id;
-      console.log(change);
       const fullDocument = change.fullDocument
-      console.log(fullDocument?.quote);
       userNsp.to(String(fullDocument._id)).emit('job update', {
         currentStatus: fullDocument.currentStatus,
         fixerLocation: fullDocument.fixerLocation.coordinates,
@@ -50,7 +47,6 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
         delete updatedFields.fixerLocation;
       }
       if (Object.keys(updatedFields).length) {
-        console.log('fixer update firing');
         fixerNsp.to(String(fullDocument._id)).emit('job update', {
           currentStatus: fullDocument.currentStatus,
           trackerStage: fullDocument.trackerStage,
@@ -67,9 +63,7 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
         streamResponse = true;
       }
       resumeToken = change._id;
-      console.log(change);
       const fullDocument = change.fullDocument;
-      console.log(fullDocument?.quote);
       userNsp.to(String(fullDocument._id)).emit('job update', {
         currentStatus: fullDocument.currentStatus,
         fixerLocation: fullDocument.fixerLocation.coordinates,
@@ -82,7 +76,6 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
         delete updatedFields.fixerLocation;
       }
       if (Object.keys(updatedFields).length) {
-        console.log('fixer update firing');
         fixerNsp.to(String(fullDocument._id)).emit('job update', {
           currentStatus: fullDocument.currentStatus,
           trackerStage: fullDocument.trackerStage,
@@ -94,13 +87,11 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
 
     setTimeout(() => {
       if (!streamResponse && !err.state) {
-        changeStream.off('error', () => console.log('error listener removed'));
+        changeStream.removeAllListeners('error');
         changeStream.close()
         const newChangeStream = Request.watch(pipeline, { fullDocument: 'updateLookup' }).on('change', change => {
           resumeToken = change._id;
-          console.log(change);
           const fullDocument = change.fullDocument;
-          console.log(fullDocument?.quote);
           userNsp.to(String(fullDocument._id)).emit('job update', {
             currentStatus: fullDocument.currentStatus,
             fixerLocation: fullDocument.fixerLocation.coordinates,
@@ -113,7 +104,6 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
             delete updatedFields.fixerLocation;
           }
           if (Object.keys(updatedFields).length) {
-            console.log('fixer update firing');
             fixerNsp.to(String(fullDocument._id)).emit('job update', {
               currentStatus: fullDocument.currentStatus,
               trackerStage: fullDocument.trackerStage,
@@ -123,15 +113,12 @@ const watcher = async (userNsp, fixerNsp, resumeToken) => {
           }
         })
         // handle error events
-        errListener(userNsp, fixerNsp, newChangeStream, resumeToken, watcher);
+        errListener(userNsp, fixerNsp, newChangeStream, resumeToken, watcher, retryNumber);
       }
-    }, 10000) // NOTE: be aware that time may need to change or coming up with another way of validating the resume token may be needed
-    // there are no ways that I have found to determine if the token is good or not (does not throw an error, and the change stream object appears to be the same regardless)
-    // therefore, I'm using a timeout since theoretically the callback on the resuming change stream should be triggered well before x seconds
-    // if not, we will at least have a backup change stream
+    }, 10000)
   }
   // handle error events
-  errListener(userNsp, fixerNsp, changeStream, resumeToken, watcher, err);
+  errListener(userNsp, fixerNsp, changeStream, resumeToken, watcher, retryNumber, err);
 }
 
 module.exports = watcher;

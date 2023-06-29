@@ -12,9 +12,9 @@ const socketHandlerFixer = nsp => {
     const token = authHeader.split(' ')[1];
     jwt.verify(
         token,
-        process.env.FIXER_ACCESS_TOKEN_SECRET, // create secret key
+        process.env.FIXER_ACCESS_TOKEN_SECRET,
         (err, decoded) => {
-            if (err) return next(new Error('Authentication error')); //invalid token
+            if (err) return next(new Error('Authentication error'));
             socket.email = decoded.userInfo.email;
             socket.roles = decoded.userInfo.roles;
             const rolesArray = [ROLES.fixer, ROLES.premiumFixer];
@@ -26,10 +26,9 @@ const socketHandlerFixer = nsp => {
   });
 
   nsp.on('connection', (socket) => {
-    console.log('a user connected');
-
+    // console.log('a user connected');
     socket.on('disconnect', () => {
-      console.log('a user disconnected');
+      // console.log('a user disconnected');
     });
 
     socket.on('work found', async (callback) => {
@@ -50,16 +49,13 @@ const socketHandlerFixer = nsp => {
     socket.on('current job', (data, callback) => {
       const { jobId } = data;
       socket.join(String(jobId));
-      console.log(`joined room with ${jobId}`);
       callback({
         status: 'OK',
       });
     })
 
-    // update fixer location
     socket.on('update location', async (data) => {
       const { location, jobId } = data;
-      console.log(`updating location. jobId: ${jobId}, location: ${location}`);
       const geojsonPoint = {
         type: 'Point',
         coordinates: location,
@@ -67,7 +63,7 @@ const socketHandlerFixer = nsp => {
       try {
         await Request.updateOne({ _id: jobId }, { fixerLocation: geojsonPoint });
       } catch (err) {
-        console.log(err.message) // error handling may need to be more extensive...keep an eye on in testing
+        console.log(err.message)
       }
     });
 
@@ -75,7 +71,6 @@ const socketHandlerFixer = nsp => {
       try {
         const response = await Request.updateOne({ _id: jobId }, { trackerStage: 'arriving' });
         if (response.modifiedCount) {
-          console.log('arriving');
           callback({
             status: 'OK',
           });
@@ -90,7 +85,6 @@ const socketHandlerFixer = nsp => {
     socket.on('leave room', (data) => {
       const { jobId } = data;
       socket.leave(String(jobId));
-      console.log(`left room with: ${jobId}`);
     });
 
     socket.on('cancel job', async (data, callback) => {

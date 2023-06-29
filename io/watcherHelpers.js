@@ -1,14 +1,12 @@
 const ResumeToken = require('../models/ResumeToken');
 
-// set backoff timeout to avoid quasi-infinite loop if there's an error state?
-// don't think this needs to be async since only async callbacks access the db
-const errListener = async (userNsp, fixerNsp, stream, token, watcher, err) => {
+const errListener = async (userNsp, fixerNsp, stream, token, watcher, retryNumber, err) => {
   stream.on('error', async () => {
     err.state = true;
     try {
       // if there's an error with the change stream, and resume token available, call watcher with token
       if (token) {
-        watcher(userNsp, fixerNsp, token);
+        watcher(userNsp, fixerNsp, token, retryNumber);
         await ResumeToken.create({
           collectionName: 'requests',
           token,
@@ -19,11 +17,11 @@ const errListener = async (userNsp, fixerNsp, stream, token, watcher, err) => {
         try {
           backupToken = await ResumeToken.find({ collectionName: 'requests' }).sort({ _id: -1 }).limit(1).exec(); // find most recent resume token
         } catch (err) {
-          console.log(err.message);
+          // console.log(err.message);
         }
-        watcher(userNsp, fixerNsp, backupToken); // works regardless of any outcome with find, whether that is finding a token, not finding a token, or encountering an error
+        watcher(userNsp, fixerNsp, backupToken, retryNumber);
       }
-      stream.close() // not sure if this will work or if it's necessary, but including to be safe
+      stream.close()
     } catch (err) {
       console.error(err);
     }

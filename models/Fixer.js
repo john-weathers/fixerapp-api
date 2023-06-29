@@ -38,7 +38,6 @@ const fixerSchema = new Schema({
         required: true,
         match: /^[\+0-9]{0,4}[-\s\.]?[(]?[0-9]{1,3}[)]?[-\s\.]?[0-9]{2,4}[-\s\.]?[0-9]{2,4}[-\s\.]?[0-9]{2,4}$/,
     },
-    // set up for $geoNear functionality
     defaultLocation: {
         type: {
             type: String,
@@ -62,7 +61,6 @@ const fixerSchema = new Schema({
             default: false,
         },
     },
-    // bids: [{ type: Schema.Types.ObjectId, ref: 'Bid' }], think about schedule data as well...might make most sense to use bid
 
 });
 

@@ -12,8 +12,6 @@ const nameSchema = new Schema({
     },
 });
 
-// consider adding profile photos
-
 const userSchema = new Schema({
     email: {
         type: String,
@@ -40,7 +38,6 @@ const userSchema = new Schema({
         required: true,
         match: /^[\+0-9]{0,4}[-\s\.]?[(]?[0-9]{1,3}[)]?[-\s\.]?[0-9]{2,4}[-\s\.]?[0-9]{2,4}[-\s\.]?[0-9]{2,4}$/,
     },
-    // set up for $geoNear functionality
     defaultLocation: {
         type: {
             type: String,
@@ -63,8 +60,6 @@ const userSchema = new Schema({
             default: false,
         },
     },
-    // requests: [{ type: Schema.Types.ObjectId, ref: 'Request' }],
-    // proposals: [{ type: Schema.Types.ObjectId, ref: 'Proposal' }],
 });
 
 module.exports = mongoose.model('User', userSchema);

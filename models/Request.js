@@ -33,13 +33,6 @@ const requestSchema = new Schema({
     currentStatus: {
       type: String,
       enum: ['in progress', 'fulfilled', 'failed', 'cancelled'],
-      /*validate: {
-        validator: function(v) {
-          if (this?.options?.previous === v) return false;
-          return true;
-        },
-        message: () => `Request status must be different from previous value`
-      },*/
     },
     trackerStage: {
       type: String,
@@ -49,7 +42,7 @@ const requestSchema = new Schema({
       coordinates: [[Number]],
       instructions: [String],
       duration: Number,
-      lastUpdatedAt: Date, // remove?
+      lastUpdatedAt: Date,
     },
     eta: Date,
     notes: String,
@@ -68,7 +61,7 @@ const requestSchema = new Schema({
     assignedAt: Date,
     workStartedAt: Date,
     fulfilledAt: Date,
-    fixer: { type: Schema.Types.ObjectId, ref: 'Fixer' }, // can populate specific fields here...(name, phoneNumber, currentLocation, rating?)
+    fixer: { type: Schema.Types.ObjectId, ref: 'Fixer' },
 });
 
 requestSchema.index({ userLocation: '2dsphere' });

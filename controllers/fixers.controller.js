@@ -9,10 +9,6 @@ const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
 const directionsService = mbxDirections({ accessToken: MAPBOX_TOKEN });
 const assert = require('assert');
 
-// TODO: add updates to handleRefreshToken and handleLogout from user controller
-// update cookie options
-// make any other fixes that were already made to equivalent user controller functions
-
 const COOKIE_AGE = 24 * 60 * 60 * 1000;
 
 const handleRegistration = async (req, res) => {
@@ -28,19 +24,16 @@ const handleRegistration = async (req, res) => {
     if (!email || !pwd || !firstName || !lastName || !phoneNumber) return res.status(400).json({ 'message': 'Please submit all required fields' });
 
     const trimmedEmail = email.trim()
-    // check for duplicate usernames in the db
     const duplicateUser = await Fixer.findOne({ email: trimmedEmail }).exec();
-    if (duplicateUser) return res.sendStatus(409); //Conflict 
+    if (duplicateUser) return res.sendStatus(409);
 
     const trimmedFirst = firstName.trim();
     const trimmedLast = lastName.trim();
     const trimmedPhone = phoneNumber.trim();
 
     try {
-        //encrypt the password
         const hashedPassword = await bcrypt.hash(pwd, 10);
 
-        //create and store the new Fixer
         const result = await Fixer.create({
             email: trimmedEmail,
             password: hashedPassword,
@@ -63,12 +56,10 @@ const handleLogin = async (req, res) => {
     if (!email || !pwd) return res.status(400).json({ 'message': 'Email and password are required for login.' });
 
     const foundUser = await Fixer.findOne({ email }).exec();
-    if (!foundUser) return res.sendStatus(401); // Unauthorized 
-    // evaluate password 
+    if (!foundUser) return res.sendStatus(401);
     const match = await bcrypt.compare(pwd, foundUser.password);
     if (match) {
         const roles = Object.values(foundUser.roles).filter(Boolean);
-        // create JWTs
         const accessToken = jwt.sign(
             {
                 'userInfo': {
@@ -92,33 +83,21 @@ const handleLogin = async (req, res) => {
 
         if (cookies?.jwt) {
 
-            /* 
-            Scenario added here: 
-                1) Fixer logs in but never uses RT and does not logout 
-                2) RT is stolen
-                3) If 1 & 2, reuse detection is needed to clear all RTs when Fixer logs in
-            */
             const refreshToken = cookies.jwt;
             const foundToken = await Fixer.findOne({ refreshToken }).exec();
 
-            // Detected refresh token reuse!
             if (!foundToken) {
-                console.log('attempted refresh token reuse at login!')
-                // clear out ALL previous refresh tokens
                 newRefreshTokenArray = [];
             }
 
-            res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // TODO: revisit options
+            res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
         }
 
-        // Saving refreshToken with current Fixer
         foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
         await foundUser.save();
 
-        // Creates Secure Cookie with refresh token
         res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
 
-        // Send authorization roles and access token to Fixer
         res.status(200).send({ accessToken });
 
     } else {
@@ -127,7 +106,6 @@ const handleLogin = async (req, res) => {
 }
 
 const handleRefreshToken = async (req, res) => {
-    console.log('handling refresh');
     const cookies = req.cookies;
     if (!cookies?.jwt) return res.sendStatus(401);
     const refreshToken = cookies.jwt;
@@ -136,12 +114,7 @@ const handleRefreshToken = async (req, res) => {
         const foundUser = await Fixer.findOne({ refreshToken }).exec();
         if (!foundUser) {
             // added to deal with multiple rapid successive calls to handleRefreshToken
-            // likely better long-term fix would be some type of deduplication solution on the front end
-            // could do something like track all refresh requests across all components using the refresh url endpoint (as a string)
-            // would need to be something that utilizes persistent storage (maybe React Redux Store?) since state is inherently unreliable in this situation
-            // catch all refresh requests within a time period before they're sent, essentially like a middleware
-            // maybe setTimeout for each attempted request, gather them together and once final timeout expires fire one request
-            // additional requests become promises with the response from the one request that fired being the resolution (or rejection on error) to all
+            // plan would be to add better deduplication on front end as a better long-term solution
             try {
                 const refreshCheck = await Fixer.findOne({ 'prevTokens.refreshTokens': refreshToken }).exec();
                 if (refreshCheck && new Date() - refreshCheck.prevTokens.lastRefresh < 1000) {
@@ -150,7 +123,6 @@ const handleRefreshToken = async (req, res) => {
                         process.env.FIXER_REFRESH_TOKEN_SECRET,
                         async (err, decoded) => {
                             if (err) {
-                                console.log('expired refresh token on double refresh')
                                 return res.sendStatus(403);
                             }
                             const prevTokenDetails = {
@@ -159,7 +131,7 @@ const handleRefreshToken = async (req, res) => {
                             const prevArr = refreshCheck.prevTokens.refreshTokens;
                             const refreshArrLength = prevArr.length;
                             if (refreshArrLength > 10) {
-                                refreshCheck.prevTokens.refreshTokens.pop(); // instead of popping cut to ten
+                                refreshCheck.prevTokens.refreshTokens.pop();
                                 await refreshCheck.save();
                             }
                             if (res.headersSent) return;
@@ -175,8 +147,7 @@ const handleRefreshToken = async (req, res) => {
                         refreshToken,
                         process.env.FIXER_REFRESH_TOKEN_SECRET,
                         async (err, decoded) => {
-                            if (err) return res.sendStatus(403); // Forbidden
-                            console.log('attempted refresh token reuse!')
+                            if (err) return res.sendStatus(403);
                             const hackedUser = await Fixer.findOne({ email: decoded.email }).exec();
                             hackedUser.refreshToken = [];
                             const result = await hackedUser.save();
@@ -186,7 +157,7 @@ const handleRefreshToken = async (req, res) => {
                     res.sendStatus(403);
                 }
             } catch (err) {
-                console.log(err.message);
+                // console.log(err.message);
             }
         }
         if (res.headersSent) return;
@@ -194,20 +165,16 @@ const handleRefreshToken = async (req, res) => {
         
         const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
     
-        // evaluate jwt 
         jwt.verify(
             refreshToken,
             process.env.FIXER_REFRESH_TOKEN_SECRET,
             async (err, decoded) => {
                 if (err) {
-                    console.log('expired refresh token')
                     foundUser.refreshToken = [...newRefreshTokenArray];
                     const result = await foundUser.save();
-                    console.log(result);
                 }
                 if (err || foundUser.email !== decoded.email) return res.sendStatus(403);
     
-                // Refresh token was still valid
                 const roles = Object.values(foundUser.roles);
                 const accessToken = jwt.sign(
                     {
@@ -225,7 +192,6 @@ const handleRefreshToken = async (req, res) => {
                     process.env.FIXER_REFRESH_TOKEN_SECRET,
                     { expiresIn: '8h' }
                 );
-                // Saving refreshToken with current user
                 const prevArr = foundUser.prevTokens.refreshTokens;
                 const refreshArrLength = prevArr.length;
                 if (refreshArrLength > 10) {
@@ -237,14 +203,12 @@ const handleRefreshToken = async (req, res) => {
                 foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
                 await foundUser.save();
     
-                // Creates Secure Cookie with refresh token
                 res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
     
                 return res.status(200).send({ accessToken });
             }
         );
     } catch (err) {
-        console.log(err.message);
         if (res.headersSent) return;
         res.sendStatus(500);
     }
@@ -252,15 +216,10 @@ const handleRefreshToken = async (req, res) => {
   }
 
 const handleLogout = async (req, res) => {
-    // On client, also delete the accessToken
-
     const cookies = req.cookies;
-    console.log(cookies);
-    if (!cookies?.jwt) return res.sendStatus(204); // No content
+    if (!cookies?.jwt) return res.sendStatus(204);
     const refreshToken = cookies.jwt;
 
-    // refresh token in db?
-    console.log(refreshToken);
     const foundUser = await Fixer.findOne({ refreshToken }).exec();
     if (!foundUser) {
         // trying to mitigate scenario where a refresh fires just before logout
@@ -274,7 +233,7 @@ const handleLogout = async (req, res) => {
                 await refreshCheck.save();
             }
         } catch (err) {
-            console.log(err.message);
+            // console.log(err.message);
         }
         // cookie is cleared either way
         res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // revisit clearCookie options
@@ -291,7 +250,6 @@ const handleLogout = async (req, res) => {
 
 const handleGetProfile = async (req, res, next) => {
     const profile = await Fixer.findOne({ email: req.email }).exec();
-    // redirect to logout if !profile?
     if (!profile) return res.sendStatus(401);
 
     const profileData = {
@@ -326,7 +284,6 @@ const handleUpdateProfile = async (req, res, next) => {
                 const roles = Object.values(foundUser.roles).filter(Boolean);
                 foundUser.email = newEmail;
                 await foundUser.save();
-                // create JWTs
                 const accessToken = jwt.sign(
                     {
                         'userInfo': {
@@ -353,24 +310,18 @@ const handleUpdateProfile = async (req, res, next) => {
                     const refreshToken = cookies.jwt;
                     const foundToken = await Fixer.findOne({ refreshToken }).exec();
         
-                    // Detected refresh token reuse!
                     if (!foundToken) {
-                        console.log('attempted refresh token reuse at login!')
-                        // clear out ALL previous refresh tokens
                         newRefreshTokenArray = [];
                     }
         
-                    res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE }); // TODO: revisit options
+                    res.clearCookie('jwt', { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
                 }
         
-                // Saving refreshToken with current Fixer
                 foundUser.refreshToken = [...newRefreshTokenArray, newRefreshToken];
                 await foundUser.save();
         
-                // Creates Secure Cookie with refresh token
                 res.cookie('jwt', newRefreshToken, { httpOnly: true, secure: true, maxAge: COOKIE_AGE });
-        
-                // Send authorization roles and access token to Fixer
+
                 res.status(200).send({ accessToken });
             
             } else {
@@ -430,17 +381,14 @@ const handleUpdateSettings = async (req, res, next) => {
 
     try {
         const foundUser = await Fixer.findOne({ email: req.email }).exec();
-        console.log(foundUser);
         if (!foundUser) return res.sendStatus(401);
 
         if (Object.hasOwn(foundUser.settings, updateKey)) {
             foundUser.settings[updateKey] = !foundUser.settings[updateKey];
             await foundUser.save();
-            console.log(foundUser.settings);
     
             res.sendStatus(200);
         } else {
-            console.log('key does not exist');
             res.sendStatus(400);
         }
        
@@ -451,17 +399,6 @@ const handleUpdateSettings = async (req, res, next) => {
 
 const currentWork = async (req, res, next) => {
     try {
-        /*const { activeJob } = await Fixer.findOne({ email: req.email })
-            .select('activeJob')
-            .populate({
-                path: 'activeJob',
-                select: 'user userLocation userAddress fixerLocation currentStatus assignedAt trackerStage route eta',
-                populate: { path: 'user', select: 'name phoneNumber' },
-            })
-            .exec();
-
-        if (!activeJob || activeJob?.currentStatus !== 'in progress') return res.sendStatus(404);*/
-
         const profile = await Fixer.findOne({ email: req.email }).exec();
         if (!profile) return res.sendStatus(401);
         if (!mongoose.isObjectIdOrHexString(profile._id)) return res.sendStatus(500);
@@ -512,7 +449,7 @@ const findWork = async (req, res, next) => {
                 $geoNear: {
                     near: geojsonPoint,
                     distanceField: 'distance',
-                    maxDistance: profile.settings.extendedOptIn ? 64374 : 32187, // about 40 if opted in, 20 miles if not (default unit meters)
+                    maxDistance: profile.settings.extendedOptIn ? 64374 : 32187, // about 40 miles if opted in, 20 if not (default unit meters)
                     query: { 
                         active: true, // filter for active requests only
                         $expr: { $gt: [ '$requestedAt', { $dateSubtract: { startDate: '$$NOW', unit: 'minute', amount: 2 } } ] } // eliminate stale requests
@@ -520,19 +457,15 @@ const findWork = async (req, res, next) => {
                 }
             },
             { $sort: { requestedAt: 1 } }, // older (non-stale) requests should be satisfied first
-            { $limit: 10 }, // only one request will be matched, so we can limit to a pool of eligible candidates (adjust number if needed).
+            { $limit: 10 }, // only one request will be matched, so we can limit to a pool of eligible candidates (can adjust number if needed).
         ]);
-
-        // console.log(activeRequests);
 
         if (!activeRequests?.length) return res.sendStatus(404);
         // loop through multiple candidates in the event that a request was matched after aggregation and before updateOne (thinking about a scenario with many requests in a busy area)
-        // NOTE: consider making this a transaction to ensure data is consistent between multiple related operations
         for await (const activeRequest of activeRequests) {
             const session = await mongoose.startSession();
             try {
                 session.startTransaction();
-                console.log(activeRequest.distance);
                 if (activeRequest.distance > 32187 && !activeRequest.extendedOptIn) {
                     await session.abortTransaction();
                     session.endSession();
@@ -551,11 +484,6 @@ const findWork = async (req, res, next) => {
                     session.endSession();
                     continue;
                 } else {
-                    /*profile.$session(session) // test to double check that this works (shouldn't be a problem)
-                    // for now passing session to updateOne is fine
-                    profile.activeJob = activeRequest._id;
-                    await profile.save();*/ 
-
                     await Fixer.updateOne({ email: req.email }, { activeJob: activeRequest._id }, { session: session });
                     
                     const response = await directionsService.getDirections({
@@ -572,26 +500,12 @@ const findWork = async (req, res, next) => {
                     const routeObject = data.routes[0];
             
                     assert.ok(assignedJob.$session())
-                    // not sure if each of these counts as a separate updateOne under the hood
-                    // if so, it could be better to combine into one update operation depending on how the final watcher function pipeline is constructed
                     assignedJob.route.coordinates = routeObject.geometry.coordinates;
                     assignedJob.route.instructions = routeObject.legs[0].steps.map(step => step.maneuver.instruction);
                     assignedJob.route.duration = routeObject.duration;
                     const addedTime = (routeObject.duration * 1000) + 180000;
                     assignedJob.eta = Date.now() + addedTime;
                     await assignedJob.save();
-
-                    /*const routeData = {
-                        coordinates: routeObject.geometry.coordinates,
-                        instructions: routeObject.legs[0].steps.map(step => step.maneuver.instruction),
-                        duration: routeObject.duration,
-                    }
-                    const addedTime = (routeObject.duration * 1000) + 180000;
-                    const eta = new Date(dateTime.getTime() + addedTime)
-
-                    const jobDetailsFull = await Request.updateOne({  }) create single call to update one depending on how assignment updates work under the hood
-                    see above comment for details
-                    */
 
                     await session.commitTransaction();
                     
@@ -609,8 +523,6 @@ const findWork = async (req, res, next) => {
                         route: assignedJob.route,
                         eta: assignedJob.eta, 
                     }
-
-                    console.log(`ETA is ${assignedJob.eta}`);
 
                     return res.status(201).send(jobDetails);
                 }
@@ -630,7 +542,6 @@ const findWork = async (req, res, next) => {
 
 const updateDirections = async (req, res, next) => {
     const { jobId, location } = req.body;
-    console.log(`updating directions: ${location}`);
 
     try {
         if (!mongoose.isObjectIdOrHexString(jobId)) return res.sendStatus(500);
@@ -664,7 +575,6 @@ const updateDirections = async (req, res, next) => {
             eta: assignedJob.eta,
         }
 
-        console.log(`new direction details: ${jobDetails}`);
         res.status(200).send(jobDetails);
     } catch (err) {
         res.sendStatus(500);
