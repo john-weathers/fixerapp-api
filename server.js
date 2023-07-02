@@ -26,6 +26,7 @@ const io = new Server(server, {
   });
 
 mongoose.set('strictQuery', false);
+console.log('1');
 
 const userNsp = io.of('/user');
 const fixerNsp = io.of('/fixer');
@@ -61,11 +62,15 @@ app.all('*', (req, res, next) => {
 })
 
 app.use(errorHandler);
+console.log('2');
 
 mongoose.connection.once('open', async () => {
+    console.log('3');
     socketHandlerUser(userNsp);
     socketHandlerFixer(fixerNsp);
+    console.log('4');
     await watcher(userNsp, fixerNsp, null, 0);
+    console.log('5');
     server.listen(PORT, '0.0.0.0', () => console.log(`Server listening on port ${PORT}`));
 })
 
