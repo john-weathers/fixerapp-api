@@ -25,6 +25,8 @@ const io = new Server(server, {
     }
   });
 
+mongoose.set('strictQuery', false);
+
 const userNsp = io.of('/user');
 const fixerNsp = io.of('/fixer');
 
