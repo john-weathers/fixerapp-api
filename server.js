@@ -64,7 +64,7 @@ mongoose.connection.once('open', async () => {
     socketHandlerUser(userNsp);
     socketHandlerFixer(fixerNsp);
     await watcher(userNsp, fixerNsp, null, 0);
-    server.listen(PORT);
+    server.listen(PORT, '0.0.0.0', () => console.log(`Server listening on port ${PORT}`));
 })
 
 
