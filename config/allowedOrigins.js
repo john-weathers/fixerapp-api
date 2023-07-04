@@ -1,5 +1,5 @@
 const allowedOrigins = [
-    'https://fixerapp.onrender.com',
+    'https://fixerapp.johnweathers.dev',
 ]
 
 module.exports = allowedOrigins;
